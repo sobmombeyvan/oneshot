@@ -2,13 +2,17 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
 const PUBLIC_ROUTES = ["/login", "/register", "/forgot-password", "/verify-email"];
-const AUTH_ROUTES = ["/login", "/register", "/forgot-password"];
+const AUTH_ROUTES = ["/login", "/register", "/forgot-password", "/verify-email"];
+
+function isDemoMode() {
+  return process.env.NEXT_PUBLIC_DEMO_MODE !== "false";
+}
 
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
-  // Demo / testing mode: skip auth entirely
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "true") {
+  // Testing: skip login/Supabase entirely — send auth pages to the app
+  if (isDemoMode()) {
     if (AUTH_ROUTES.some((r) => pathname.startsWith(r))) {
       const dashUrl = request.nextUrl.clone();
       dashUrl.pathname = "/dashboard";

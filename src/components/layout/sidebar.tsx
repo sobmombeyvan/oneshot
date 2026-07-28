@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard, ShoppingCart, Package, ChefHat, Flame, Wine,
   ClipboardList, Grid3X3, Calendar, Users, Truck, ShoppingBag,
-  FileText, BarChart3, Sparkles, Settings, LogOut, ChevronLeft,
+  FileText, BarChart3, Settings, LogOut, ChevronLeft,
   Bell, Menu, X,
 } from "lucide-react";
 import { useState } from "react";
@@ -13,14 +13,13 @@ import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { BRAND, NAV_ITEMS } from "@/lib/constants";
 import { canAccessRoute } from "@/lib/permissions";
-import { isDemoMode } from "@/lib/demo/config";
 import { createClient } from "@/lib/supabase/client";
 import type { Profile } from "@/types/database";
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   LayoutDashboard, ShoppingCart, Package, ChefHat, Flame, Wine,
   ClipboardList, Grid3X3, Calendar, Users, Truck, ShoppingBag,
-  FileText, BarChart3, Sparkles, Settings,
+  FileText, BarChart3, Settings,
 };
 
 interface SidebarProps {
@@ -36,10 +35,7 @@ export function Sidebar({ profile, notificationCount = 0 }: SidebarProps) {
 
   const navItems = NAV_ITEMS.filter((item) => canAccessRoute(profile.role, item.roles));
 
-  const demo = isDemoMode();
-
   const handleLogout = async () => {
-    if (demo) return;
     const supabase = createClient();
     await supabase.auth.signOut();
     router.push("/login");
@@ -91,23 +87,18 @@ export function Sidebar({ profile, notificationCount = 0 }: SidebarProps) {
           <div className="px-3 py-2">
             <p className="text-sm font-medium text-off-white truncate">{profile.fullname}</p>
             <p className="text-xs text-off-white/40 capitalize">{profile.role.replace("_", " ")}</p>
-            {demo && (
-              <p className="text-[10px] text-primary mt-1 tracking-wider uppercase">Mode démo — sans login</p>
-            )}
           </div>
         )}
-        {!demo && (
-          <button
-            onClick={handleLogout}
-            className={cn(
-              "flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm text-off-white/60 hover:text-red-400 hover:bg-red-500/10 transition-colors",
-              collapsed && "justify-center"
-            )}
-          >
-            <LogOut className="h-5 w-5" />
-            {!collapsed && <span>Déconnexion</span>}
-          </button>
-        )}
+        <button
+          onClick={handleLogout}
+          className={cn(
+            "flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm text-off-white/60 hover:text-red-400 hover:bg-red-500/10 transition-colors",
+            collapsed && "justify-center"
+          )}
+        >
+          <LogOut className="h-5 w-5" />
+          {!collapsed && <span>Déconnexion</span>}
+        </button>
       </div>
     </>
   );

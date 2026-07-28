@@ -11,7 +11,7 @@ export const BRAND = {
   },
 } as const;
 
-export const VAT_RATE = 19.25;
+export const VAT_RATE = 0;
 
 export const PAYMENT_METHODS = [
   { value: "cash", label: "Cash", icon: "Banknote" },
@@ -62,6 +62,5 @@ export const NAV_ITEMS = [
   { href: "/purchases", label: "Purchases", icon: "ShoppingBag", roles: ["administrator", "manager", "store_keeper"] },
   { href: "/invoices", label: "Invoices", icon: "FileText", roles: ["administrator", "manager", "cashier"] },
   { href: "/reports", label: "Reports", icon: "BarChart3", roles: ["administrator", "manager"] },
-  { href: "/ai-assistant", label: "AI Assistant", icon: "Sparkles", roles: ["administrator", "manager"] },
   { href: "/settings", label: "Settings", icon: "Settings", roles: ["administrator", "manager"] },
 ] as const;

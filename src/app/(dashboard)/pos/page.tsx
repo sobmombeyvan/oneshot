@@ -20,10 +20,11 @@ import { formatCurrency, calculateTotal, generateInvoiceNumber, cn } from "@/lib
 import { VAT_RATE, PAYMENT_METHODS } from "@/lib/constants";
 import type { Product, Category, CartItem, PaymentMethod, RestaurantTable } from "@/types/database";
 
+const ALLOWED_CATEGORY_TYPES = ["lounge", "grill"] as const;
+
 function getStation(categoryType?: string): string {
-  if (categoryType === "grill") return "grill";
   if (categoryType === "lounge") return "bar";
-  return "kitchen";
+  return "grill";
 }
 
 function POSPageInner() {
@@ -53,7 +54,11 @@ function POSPageInner() {
   const { data: categories = [] } = useQuery({
     queryKey: ["categories"],
     queryFn: async () => {
-      const { data } = await supabase.from("categories").select("*").order("name");
+      const { data } = await supabase
+        .from("categories")
+        .select("*")
+        .in("type", [...ALLOWED_CATEGORY_TYPES])
+        .order("name");
       return (data ?? []) as Category[];
     },
   });
@@ -248,7 +253,7 @@ function POSPageInner() {
 
   return (
     <div className="h-screen flex flex-col">
-      <Header title="Point de Vente" subtitle="Créer une commande — envoi auto cuisine / grill / bar" />
+      <Header title="Point de Vente" subtitle="Créer une commande — envoi auto lounge (bar) / grill" />
 
       {receipt && <ReceiptPrintView data={receipt} />}
 

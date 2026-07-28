@@ -7,7 +7,7 @@ export type UserRole =
   | "bar"
   | "store_keeper";
 
-export type CategoryType = "lounge" | "grill" | "snack";
+export type CategoryType = "lounge" | "grill";
 export type ProductStatus = "active" | "inactive" | "discontinued";
 export type StockMovementType = "IN" | "OUT" | "ADJUSTMENT";
 export type OrderStatus = "pending" | "preparing" | "ready" | "served" | "completed" | "cancelled";

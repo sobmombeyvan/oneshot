@@ -6,7 +6,7 @@ import {
   useReactTable, getCoreRowModel, getFilteredRowModel,
   getPaginationRowModel, flexRender, type ColumnDef,
 } from "@tanstack/react-table";
-import { Plus, Search, Download, Package, AlertTriangle, ArrowUpDown, Pencil, ImagePlus, X } from "lucide-react";
+import { Plus, Search, Download, Package, AlertTriangle, ArrowUpDown, Pencil, ImagePlus, X, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Header } from "@/components/layout/sidebar";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,9 @@ import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils";
 import { uploadProductImage } from "@/lib/storage";
 import { logActivity } from "@/lib/activity";
-import type { Product, ProductStatus } from "@/types/database";
+import type { CategoryType, Product, ProductStatus } from "@/types/database";
+
+const ALLOWED_CATEGORY_TYPES = ["lounge", "grill"] as const;
 
 const EMPTY_FORM = {
   name: "",
@@ -64,10 +66,15 @@ export default function InventoryPage() {
   const [search, setSearch] = useState("");
   const [showStockDialog, setShowStockDialog] = useState(false);
   const [showProductDialog, setShowProductDialog] = useState(false);
+  const [showCategoryDialog, setShowCategoryDialog] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [stockForm, setStockForm] = useState({ type: "IN" as "IN" | "OUT" | "ADJUSTMENT", quantity: 0, reason: "" });
   const [productForm, setProductForm] = useState(EMPTY_FORM);
+  const [categoryForm, setCategoryForm] = useState<{ name: string; type: CategoryType }>({
+    name: "",
+    type: "lounge",
+  });
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -85,7 +92,11 @@ export default function InventoryPage() {
   const { data: categories = [] } = useQuery({
     queryKey: ["categories"],
     queryFn: async () => {
-      const { data } = await supabase.from("categories").select("*").order("name");
+      const { data } = await supabase
+        .from("categories")
+        .select("*")
+        .in("type", [...ALLOWED_CATEGORY_TYPES])
+        .order("name");
       return (data ?? []) as { id: string; name: string }[];
     },
   });
@@ -234,6 +245,57 @@ export default function InventoryPage() {
     onError: (err: Error) => toast.error(err.message),
   });
 
+  const deleteProduct = useMutation({
+    mutationFn: async (product: Product) => {
+      const { error } = await supabase.from("products").delete().eq("id", product.id);
+      if (error) {
+        const isFkError =
+          (error as { code?: string }).code === "23503" ||
+          /foreign key|constraint/i.test(error.message);
+        if (isFkError) {
+          throw new Error(
+            "Impossible de supprimer ce produit: il est déjà lié à des ventes/achats/stock. Mettez-le sur 'discontinued' ou 'inactive'."
+          );
+        }
+        throw error;
+      }
+
+      await logActivity(supabase, {
+        action: "delete",
+        entity: "product",
+        title: `Produit supprimé — ${product.name}`,
+        message: `Suppression définitive du produit ${product.name}`,
+        data: { product_id: product.id, barcode: product.barcode },
+      });
+    },
+    onSuccess: () => {
+      toast.success("Produit supprimé");
+      invalidateProducts();
+      queryClient.invalidateQueries({ queryKey: ["activity-log"] });
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const createCategory = useMutation({
+    mutationFn: async () => {
+      const name = categoryForm.name.trim();
+      if (!name) throw new Error("Nom de catégorie requis");
+
+      const { error } = await supabase.from("categories").insert({
+        name,
+        type: categoryForm.type,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Catégorie créée");
+      queryClient.invalidateQueries({ queryKey: ["categories"] });
+      setShowCategoryDialog(false);
+      setCategoryForm({ name: "", type: "lounge" });
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
   const exportCsv = () => {
     const header = "name,barcode,stock,purchase_price,selling_price,status\n";
     const rows = products
@@ -340,6 +402,18 @@ export default function InventoryPage() {
           >
             <ArrowUpDown className="h-4 w-4" />
           </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            title="Supprimer le produit"
+            onClick={() => {
+              if (!window.confirm(`Supprimer définitivement "${row.original.name}" ?`)) return;
+              deleteProduct.mutate(row.original);
+            }}
+            disabled={deleteProduct.isPending}
+          >
+            <Trash2 className="h-4 w-4 text-red-400" />
+          </Button>
         </div>
       ),
     },
@@ -404,6 +478,13 @@ export default function InventoryPage() {
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={exportCsv}>
               <Download className="h-4 w-4" /> Exporter
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowCategoryDialog(true)}
+            >
+              <Plus className="h-4 w-4" /> Nouvelle catégorie
             </Button>
             <Button size="sm" onClick={openCreate}>
               <Plus className="h-4 w-4" /> Nouveau produit
@@ -638,6 +719,57 @@ export default function InventoryPage() {
             )}
             <Button className="w-full" onClick={() => saveProduct.mutate()} disabled={saveProduct.isPending}>
               {saveProduct.isPending ? "Enregistrement..." : editingId ? "Enregistrer les modifications" : "Créer le produit"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={showCategoryDialog}
+        onOpenChange={(open) => {
+          setShowCategoryDialog(open);
+          if (!open) {
+            setCategoryForm({ name: "", type: "lounge" });
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Nouvelle catégorie</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-2">
+              <Label>Nom</Label>
+              <Input
+                value={categoryForm.name}
+                onChange={(e) =>
+                  setCategoryForm((prev) => ({ ...prev, name: e.target.value }))
+                }
+                placeholder="Ex: Cocktails, Grill Specials..."
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Type</Label>
+              <select
+                className="w-full h-11 rounded-xl bg-charcoal border border-smoked-brown/40 px-3 text-sm"
+                value={categoryForm.type}
+                onChange={(e) =>
+                  setCategoryForm((prev) => ({
+                    ...prev,
+                    type: e.target.value as CategoryType,
+                  }))
+                }
+              >
+                <option value="lounge">Lounge</option>
+                <option value="grill">Grill</option>
+              </select>
+            </div>
+            <Button
+              className="w-full"
+              onClick={() => createCategory.mutate()}
+              disabled={createCategory.isPending}
+            >
+              {createCategory.isPending ? "Création..." : "Créer la catégorie"}
             </Button>
           </div>
         </DialogContent>

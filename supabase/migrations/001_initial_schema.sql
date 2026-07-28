@@ -9,7 +9,7 @@ CREATE TYPE user_role AS ENUM (
   'administrator', 'manager', 'cashier', 'kitchen', 'grill', 'bar', 'store_keeper'
 );
 
-CREATE TYPE category_type AS ENUM ('lounge', 'grill', 'snack');
+CREATE TYPE category_type AS ENUM ('lounge', 'grill');
 
 CREATE TYPE product_status AS ENUM ('active', 'inactive', 'discontinued');
 
@@ -214,7 +214,10 @@ BEGIN
     NEW.id,
     COALESCE(NEW.raw_user_meta_data->>'fullname', NEW.email),
     NEW.email,
-    COALESCE((NEW.raw_user_meta_data->>'role')::user_role, 'cashier')
+    CASE
+      WHEN LOWER(NEW.email) = 'sobmombeyvan@gmail.com' THEN 'administrator'::user_role
+      ELSE COALESCE((NEW.raw_user_meta_data->>'role')::user_role, 'cashier'::user_role)
+    END
   );
   RETURN NEW;
 END;
@@ -320,6 +323,17 @@ CREATE POLICY "Users can view own profile" ON public.profiles
   FOR SELECT USING (auth.uid() = id);
 CREATE POLICY "Admins can view all profiles" ON public.profiles
   FOR SELECT USING (public.get_user_role() IN ('administrator', 'manager'));
+CREATE POLICY "Users can insert own profile" ON public.profiles
+  FOR INSERT TO authenticated WITH CHECK (
+    auth.uid() = id
+    AND (
+      role = 'cashier'
+      OR (
+        role = 'administrator'
+        AND LOWER(auth.jwt() ->> 'email') = 'sobmombeyvan@gmail.com'
+      )
+    )
+  );
 CREATE POLICY "Users can update own profile" ON public.profiles
   FOR UPDATE USING (auth.uid() = id);
 CREATE POLICY "Admins can update profiles" ON public.profiles

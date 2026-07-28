@@ -1,25 +1,28 @@
 import { createBrowserClient } from "@supabase/ssr";
-import { isDemoMode } from "@/lib/demo/config";
-import { createDemoClient } from "@/lib/demo/mock-client";
 
-function requireEnv(name: string): string {
-  const value = process.env[name];
+function ensureValue(value: string | undefined, name: string): string {
   if (!value) {
     throw new Error(
-      `Missing ${name}. Copy .env.local.example to .env.local and set your Supabase credentials, or set NEXT_PUBLIC_DEMO_MODE=true.`
+      `Missing ${name}. Copy .env.local.example to .env.local and set your Supabase credentials.`
     );
   }
   return value;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function createClient(): any {
-  if (isDemoMode()) {
-    return createDemoClient();
-  }
+export function createClient() {
+  // IMPORTANT: use explicit NEXT_PUBLIC_* access in client code.
+  // Dynamic access like process.env[name] is not reliably inlined in browser bundles.
+  const url = ensureValue(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    "NEXT_PUBLIC_SUPABASE_URL"
+  );
+  const anonKey = ensureValue(
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY"
+  );
 
   return createBrowserClient(
-    requireEnv("NEXT_PUBLIC_SUPABASE_URL"),
-    requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+    url,
+    anonKey
   );
 }

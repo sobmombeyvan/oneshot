@@ -1,16 +1,8 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
-import type { Profile } from "@/types/database";
-import { DEMO_USER, isDemoMode } from "@/lib/demo/config";
-import { createDemoClient } from "@/lib/demo/mock-client";
-import { getDemoStore } from "@/lib/demo/store";
+import type { Profile, UserRole } from "@/types/database";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function createClient(): Promise<any> {
-  if (isDemoMode()) {
-    return createDemoClient();
-  }
-
+export async function createClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -39,23 +31,6 @@ export async function createClient(): Promise<any> {
 }
 
 export async function getProfile(): Promise<Profile | null> {
-  if (isDemoMode()) {
-    const store = getDemoStore();
-    const profile = store.profiles.find((p) => p.id === DEMO_USER.id);
-    return (
-      profile ?? {
-        id: DEMO_USER.id,
-        fullname: DEMO_USER.fullname,
-        email: DEMO_USER.email,
-        phone: null,
-        role: DEMO_USER.role,
-        avatar: null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }
-    );
-  }
-
   const supabase = await createClient();
   if (!supabase) return null;
 
@@ -70,5 +45,48 @@ export async function getProfile(): Promise<Profile | null> {
     .eq("id", user.id)
     .single();
 
-  return (profile as Profile | null) ?? null;
+  if (profile) {
+    return profile as Profile;
+  }
+
+  // Bootstrap a minimal profile when Auth user exists but trigger/profile is missing.
+  // Role is forced to cashier; admin promotion is done explicitly by SQL.
+  const { data: inserted } = await supabase
+    .from("profiles")
+    .insert({
+      id: user.id,
+      fullname:
+        (user.user_metadata?.fullname as string | undefined) ||
+        user.email ||
+        "User",
+      email: user.email || "",
+      phone: (user.user_metadata?.phone as string | null | undefined) ?? null,
+      role:
+        user.email?.toLowerCase() === "sobmombeyvan@gmail.com"
+          ? ("administrator" as UserRole)
+          : ("cashier" as UserRole),
+      avatar: null,
+    })
+    .select("*")
+    .single();
+
+  if (inserted) {
+    return inserted as Profile;
+  }
+
+  const fallbackProfile: Profile = {
+    id: user.id,
+    fullname:
+      (user.user_metadata?.fullname as string | undefined) ||
+      user.email ||
+      "User",
+    email: user.email || "",
+    phone: (user.user_metadata?.phone as string | null | undefined) ?? null,
+    role: "cashier",
+    avatar: null,
+    created_at: user.created_at ?? new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  return fallbackProfile;
 }

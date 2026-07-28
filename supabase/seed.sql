@@ -9,9 +9,7 @@ INSERT INTO public.categories (name, type) VALUES
   ('Shots', 'lounge'),
   ('Grill Specials', 'grill'),
   ('Steaks', 'grill'),
-  ('Burgers', 'grill'),
-  ('Snacks', 'snack'),
-  ('Appetizers', 'snack');
+  ('Burgers', 'grill');
 
 INSERT INTO public.restaurant_tables (number, status) VALUES
   (1, 'available'), (2, 'available'), (3, 'available'),
@@ -37,7 +35,7 @@ FROM (VALUES
   ('Grilled Ribeye', '300g premium ribeye', 'OS006001', 3500::decimal, 12000::decimal, 25, 5, 'Grill Specials'),
   ('Mixed Grill Platter', 'Assorted grilled meats', 'OS006002', 5000::decimal, 18000::decimal, 15, 3, 'Grill Specials'),
   ('Classic Burger', 'Beef patty, cheese, fries', 'OS007001', 1200::decimal, 4500::decimal, 40, 10, 'Burgers'),
-  ('Chicken Wings', 'Spicy buffalo wings', 'OS008001', 800::decimal, 3500::decimal, 50, 10, 'Snacks'),
-  ('Loaded Nachos', 'Cheese, jalapeños, salsa', 'OS009001', 600::decimal, 3000::decimal, 35, 8, 'Appetizers')
+  ('Chicken Wings', 'Spicy buffalo wings', 'OS008001', 800::decimal, 3500::decimal, 50, 10, 'Grill Specials'),
+  ('Loaded Nachos', 'Cheese, jalapeños, salsa', 'OS009001', 600::decimal, 3000::decimal, 35, 8, 'Grill Specials')
 ) AS p(name, description, barcode, purchase_price, selling_price, stock, minimum_stock, cat_name)
 JOIN public.categories c ON c.name = p.cat_name;

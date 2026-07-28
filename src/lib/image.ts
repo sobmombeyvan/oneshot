@@ -1,7 +1,7 @@
 /**
  * Reads an image File and returns a downscaled JPEG/PNG data URL.
  * Keeps payloads small enough to store directly in the `products.image` column
- * (works in demo mode and real Supabase without needing Storage buckets).
+ * before uploading to Supabase Storage.
  */
 export async function fileToCompressedDataUrl(
   file: File,

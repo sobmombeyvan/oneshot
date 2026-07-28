@@ -121,9 +121,8 @@ export default function DashboardPage() {
   }, [supabase]);
 
   const categoryData = [
-    { name: "Lounge", value: 45 },
-    { name: "Grill", value: 35 },
-    { name: "Snack", value: 20 },
+    { name: "Lounge", value: 55 },
+    { name: "Grill", value: 45 },
   ];
 
   return (

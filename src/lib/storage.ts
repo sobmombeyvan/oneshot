@@ -1,10 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fileToCompressedDataUrl } from "@/lib/image";
-import { isDemoMode } from "@/lib/demo/config";
 
 /**
  * Compresses an image and uploads it to the public `products` Storage bucket.
- * In demo mode, returns a compressed data URL (no Storage needed).
+ * Returns the public URL to store on `products.image`.
  */
 export async function uploadProductImage(
   supabase: SupabaseClient,
@@ -12,10 +11,6 @@ export async function uploadProductImage(
   productKey = "new"
 ): Promise<string> {
   const dataUrl = await fileToCompressedDataUrl(file);
-
-  if (isDemoMode()) {
-    return dataUrl;
-  }
 
   const response = await fetch(dataUrl);
   const blob = await response.blob();

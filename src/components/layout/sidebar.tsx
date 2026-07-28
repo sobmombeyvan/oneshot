@@ -8,7 +8,7 @@ import {
   FileText, BarChart3, Settings, LogOut, ChevronLeft,
   Bell, Menu, X,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { BRAND, NAV_ITEMS } from "@/lib/constants";
@@ -27,11 +27,28 @@ interface SidebarProps {
   notificationCount?: number;
 }
 
+function useSquareScreen() {
+  const [isSquare, setIsSquare] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-aspect-ratio: 5/4), (max-height: 820px)");
+    const update = () => setIsSquare(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+  return isSquare;
+}
+
 export function Sidebar({ profile, notificationCount = 0 }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const isSquare = useSquareScreen();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  useEffect(() => {
+    if (isSquare) setCollapsed(true);
+  }, [isSquare]);
 
   const navItems = NAV_ITEMS.filter((item) => canAccessRoute(profile.role, item.roles));
 
@@ -113,8 +130,9 @@ export function Sidebar({ profile, notificationCount = 0 }: SidebarProps) {
       </button>
 
       <aside className={cn(
-        "hidden lg:flex flex-col h-screen bg-black border-r border-smoked-brown/30 transition-all duration-300 sticky top-0",
-        collapsed ? "w-[72px]" : "w-64"
+        "hidden lg:flex flex-col h-dvh bg-black border-r border-smoked-brown/30 transition-all duration-300 sticky top-0",
+        collapsed ? "w-[64px]" : "w-64",
+        "square:w-[64px]"
       )}>
         <button
           onClick={() => setCollapsed(!collapsed)}
@@ -158,13 +176,19 @@ export function Sidebar({ profile, notificationCount = 0 }: SidebarProps) {
 
 export function Header({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
-    <header className="sticky top-0 z-30 bg-black/80 backdrop-blur-xl border-b border-smoked-brown/20 px-6 py-4 lg:px-8">
-      <div className="flex items-center justify-between">
-        <div className="pl-12 lg:pl-0">
-          <h1 className="font-[family-name:var(--font-cinzel)] text-2xl font-bold text-off-white">{title}</h1>
-          {subtitle && <p className="text-sm text-off-white/50 mt-0.5">{subtitle}</p>}
+    <header className="sticky top-0 z-30 bg-black/80 backdrop-blur-xl border-b border-smoked-brown/20 px-4 py-3 lg:px-8 lg:py-4 short:py-2 square:px-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="pl-12 lg:pl-0 min-w-0">
+          <h1 className="font-[family-name:var(--font-cinzel)] text-xl lg:text-2xl font-bold text-off-white truncate short:text-lg">
+            {title}
+          </h1>
+          {subtitle && (
+            <p className="text-sm text-off-white/50 mt-0.5 truncate short:hidden square:text-xs">
+              {subtitle}
+            </p>
+          )}
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 shrink-0">
           <button className="relative p-2 rounded-xl hover:bg-charcoal transition-colors">
             <Bell className="h-5 w-5 text-off-white/60" />
             <span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full" />

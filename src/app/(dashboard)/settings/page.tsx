@@ -8,6 +8,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { BRAND, VAT_RATE } from "@/lib/constants";
+import {
+  getCashDrawerSettings,
+  saveCashDrawerSettings,
+  openCashDrawer,
+  connectUsbCashDrawer,
+  type CashDrawerSettings,
+} from "@/lib/printer/cash-drawer";
 
 const STORAGE_KEY = "oneshot-settings";
 
@@ -31,6 +38,7 @@ const DEFAULTS: AppSettings = {
 
 export default function SettingsPage() {
   const [form, setForm] = useState<AppSettings>(DEFAULTS);
+  const [printer, setPrinter] = useState<CashDrawerSettings>(() => getCashDrawerSettings());
 
   useEffect(() => {
     try {
@@ -39,11 +47,32 @@ export default function SettingsPage() {
     } catch {
       /* ignore */
     }
+    setPrinter(getCashDrawerSettings());
   }, []);
 
   const save = () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(form));
+    saveCashDrawerSettings(printer);
     toast.success("Paramètres sauvegardés");
+  };
+
+  const testDrawer = async () => {
+    saveCashDrawerSettings(printer);
+    const result = await openCashDrawer();
+    if (result.ok) {
+      toast.success(`Tiroir ouvert (${result.method})`);
+    } else {
+      toast.error(result.error ?? "Échec ouverture tiroir");
+    }
+  };
+
+  const pairUsb = async () => {
+    const ok = await connectUsbCashDrawer();
+    if (ok) {
+      toast.success("USB XPrinter autorise. Le tiroir pourra s'ouvrir automatiquement.");
+    } else {
+      toast.error("Autorisation USB annulee ou indisponible.");
+    }
   };
 
   return (
@@ -86,6 +115,60 @@ export default function SettingsPage() {
             <div className="space-y-2">
               <Label>Numéro contribuable</Label>
               <Input value={form.taxId} onChange={(e) => setForm({ ...form, taxId: e.target.value })} placeholder="M0123456789" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader><CardTitle>XPrinter — tiroir caisse</CardTitle></CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-off-white/50">
+              Le tiroir s&apos;ouvre automatiquement au POS quand le paiement est <strong className="text-off-white">Cash</strong>.
+              L&apos;impression des tickets se fait directement sur XPrinter via le bridge local. En USB: cliquez d&apos;abord sur <strong className="text-off-white">Autoriser USB XPrinter</strong>, puis lancez <code className="text-primary">npm run printer:bridge</code> sur le PC caisse.
+            </p>
+            <div className="flex items-center gap-3">
+              <input
+                id="drawer-enabled"
+                type="checkbox"
+                checked={printer.enabled}
+                onChange={(e) => setPrinter({ ...printer, enabled: e.target.checked })}
+                className="h-4 w-4 rounded border-smoked-brown/40"
+              />
+              <Label htmlFor="drawer-enabled">Ouvrir le tiroir sur paiement cash</Label>
+            </div>
+            <div className="flex items-center gap-3">
+              <input
+                id="drawer-usb"
+                type="checkbox"
+                checked={printer.usbDirect}
+                onChange={(e) => setPrinter({ ...printer, usbDirect: e.target.checked })}
+                className="h-4 w-4 rounded border-smoked-brown/40"
+              />
+              <Label htmlFor="drawer-usb">Essayer USB direct (POS)</Label>
+            </div>
+            <div className="space-y-2">
+              <Label>URL bridge local</Label>
+              <Input
+                value={printer.bridgeUrl}
+                onChange={(e) => setPrinter({ ...printer, bridgeUrl: e.target.value })}
+                placeholder="http://127.0.0.1:17809"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Nom imprimante QZ Tray (optionnel)</Label>
+              <Input
+                value={printer.qzPrinterName}
+                onChange={(e) => setPrinter({ ...printer, qzPrinterName: e.target.value })}
+                placeholder="Xprinter XP-80"
+              />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" onClick={pairUsb}>
+                Autoriser USB XPrinter
+              </Button>
+              <Button type="button" variant="outline" onClick={testDrawer}>
+                Tester le tiroir
+              </Button>
             </div>
           </CardContent>
         </Card>

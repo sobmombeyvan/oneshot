@@ -72,7 +72,7 @@ export default function OrdersPage() {
       quantity: i.quantity,
       price: i.price,
     }));
-    setReceipt({
+    const receiptData: ReceiptData = {
       title: "Bon de commande",
       orderId: order.id,
       tableNumber: order.table_number,
@@ -84,8 +84,9 @@ export default function OrdersPage() {
       total: order.total,
       paymentMethod: order.payment_method,
       notes: order.notes,
-    });
-    printReceipt();
+    };
+    setReceipt(receiptData);
+    void printReceipt(receiptData);
   };
 
   return (

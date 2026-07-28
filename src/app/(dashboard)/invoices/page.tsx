@@ -43,7 +43,7 @@ export default function InvoicesPage() {
       price: item.price,
     }));
 
-    setPrintData({
+    const receiptData: ReceiptData = {
       title: "Facture",
       invoiceNumber: invoice.invoice_number,
       orderId: invoice.order_id ?? undefined,
@@ -57,9 +57,10 @@ export default function InvoicesPage() {
       tax: invoice.tax,
       total: invoice.total,
       paymentMethod: invoice.payment_method,
-    });
+    };
+    setPrintData(receiptData);
     toast.success(`Impression ${invoice.invoice_number}`);
-    printReceipt();
+    void printReceipt(receiptData);
   };
 
   return (

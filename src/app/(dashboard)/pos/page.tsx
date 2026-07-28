@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ReceiptPrintView, printReceipt, type ReceiptData } from "@/components/print/receipt";
+import { openCashDrawer, shouldOpenCashDrawer } from "@/lib/printer/cash-drawer";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency, calculateTotal, generateInvoiceNumber, cn } from "@/lib/utils";
 import { VAT_RATE, PAYMENT_METHODS } from "@/lib/constants";
@@ -218,7 +219,14 @@ function POSPageInner() {
       queryClient.invalidateQueries({ queryKey: ["restaurant-tables"] });
       queryClient.invalidateQueries({ queryKey: ["all-orders"] });
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
-      printReceipt();
+      if (shouldOpenCashDrawer(selectedPayment)) {
+        void openCashDrawer().then((result) => {
+          if (!result.ok && result.error !== "disabled") {
+            toast.warning("Tiroir non ouvert — allez dans Parametres > XPrinter: Autoriser USB, puis retestez.");
+          }
+        });
+      }
+      void printReceipt(receiptData);
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -252,14 +260,14 @@ function POSPageInner() {
   };
 
   return (
-    <div className="h-screen flex flex-col">
+    <div className="h-dvh flex flex-col overflow-hidden">
       <Header title="Point de Vente" subtitle="Créer une commande — envoi auto lounge (bar) / grill" />
 
       {receipt && <ReceiptPrintView data={receipt} />}
 
-      <div className="flex-1 flex overflow-hidden no-print">
-        <div className="flex-1 flex flex-col p-4 lg:p-6 overflow-hidden">
-          <div className="flex gap-3 mb-4">
+      <div className="flex-1 flex flex-col overflow-hidden no-print min-h-0 [@media(min-width:1024px)_and_(min-aspect-ratio:5/4)]:flex-row">
+        <div className="flex-1 flex flex-col p-3 lg:p-6 square:p-2 short:p-2 overflow-hidden min-h-0 square:flex-[1.15]">
+          <div className="flex gap-2 lg:gap-3 mb-3 short:mb-2">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-off-white/40" />
               <Input
@@ -268,13 +276,13 @@ function POSPageInner() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 onKeyDown={handleBarcodeScan}
-                className="pl-10 h-12 text-base"
+                className="pl-10 h-11 short:h-10 text-base"
               />
             </div>
             <Button
               variant="outline"
               size="icon"
-              className="h-12 w-12 shrink-0"
+              className="h-11 w-11 short:h-10 short:w-10 shrink-0"
               title="Focus scan code-barres"
               onClick={() => {
                 searchRef.current?.focus();
@@ -285,11 +293,11 @@ function POSPageInner() {
             </Button>
           </div>
 
-          <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
+          <div className="flex gap-2 mb-3 short:mb-2 overflow-x-auto pb-1 shrink-0">
             <button
               onClick={() => setSelectedCategory(null)}
               className={cn(
-                "px-4 py-2 rounded-xl text-sm whitespace-nowrap transition-colors",
+                "px-3 py-1.5 short:px-2.5 short:py-1 rounded-xl text-sm short:text-xs whitespace-nowrap transition-colors",
                 !selectedCategory ? "bg-primary text-off-white" : "bg-charcoal text-off-white/60 hover:text-off-white"
               )}
             >
@@ -300,7 +308,7 @@ function POSPageInner() {
                 key={cat.id}
                 onClick={() => setSelectedCategory(cat.id)}
                 className={cn(
-                  "px-4 py-2 rounded-xl text-sm whitespace-nowrap transition-colors capitalize",
+                  "px-3 py-1.5 short:px-2.5 short:py-1 rounded-xl text-sm short:text-xs whitespace-nowrap transition-colors capitalize",
                   selectedCategory === cat.id ? "bg-primary text-off-white" : "bg-charcoal text-off-white/60 hover:text-off-white"
                 )}
               >
@@ -309,36 +317,36 @@ function POSPageInner() {
             ))}
           </div>
 
-          <div className="flex-1 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 content-start">
+          <div className="flex-1 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 square:grid-cols-3 short:grid-cols-3 gap-2 lg:gap-3 content-start">
             {products.map((product) => (
               <motion.button
                 key={product.id}
                 whileTap={{ scale: 0.95 }}
                 onClick={() => addToCart(product)}
-                className="p-4 rounded-2xl bg-charcoal/80 border border-smoked-brown/30 hover:border-primary/50 hover:bg-charcoal transition-all text-left group"
+                className="p-2.5 lg:p-4 short:p-2 rounded-xl lg:rounded-2xl bg-charcoal/80 border border-smoked-brown/30 hover:border-primary/50 hover:bg-charcoal transition-all text-left group"
               >
-                <div className="aspect-square rounded-xl bg-smoked-brown/20 mb-3 flex items-center justify-center">
+                <div className="aspect-square rounded-lg lg:rounded-xl bg-smoked-brown/20 mb-2 short:mb-1.5 flex items-center justify-center max-h-28 short:max-h-20 square:max-h-24 mx-auto w-full">
                   {product.image ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={product.image} alt={product.name} className="w-full h-full object-cover rounded-xl" />
+                    <img src={product.image} alt={product.name} className="w-full h-full object-cover rounded-lg lg:rounded-xl" />
                   ) : (
-                    <ShoppingCart className="h-8 w-8 text-off-white/20 group-hover:text-primary/40 transition-colors" />
+                    <ShoppingCart className="h-6 w-6 short:h-5 short:w-5 text-off-white/20 group-hover:text-primary/40 transition-colors" />
                   )}
                 </div>
-                <p className="text-sm font-medium text-off-white truncate">{product.name}</p>
-                <p className="text-primary font-bold mt-1">{formatCurrency(product.selling_price)}</p>
+                <p className="text-sm short:text-xs font-medium text-off-white truncate">{product.name}</p>
+                <p className="text-primary font-bold mt-0.5 text-sm short:text-xs">{formatCurrency(product.selling_price)}</p>
                 {product.stock <= product.minimum_stock && (
-                  <Badge variant="warning" className="mt-2 text-[10px]">Stock: {product.stock}</Badge>
+                  <Badge variant="warning" className="mt-1 text-[10px]">Stock: {product.stock}</Badge>
                 )}
               </motion.button>
             ))}
           </div>
         </div>
 
-        <div className="w-full max-w-md border-l border-smoked-brown/30 bg-charcoal/30 flex flex-col">
-          <div className="p-4 border-b border-smoked-brown/30">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="font-[family-name:var(--font-cinzel)] text-lg font-bold">Panier</h2>
+        <div className="w-full border-t border-smoked-brown/30 bg-charcoal/30 flex flex-col min-h-0 max-h-[42dvh] short:max-h-[45dvh] [@media(min-width:1024px)_and_(min-aspect-ratio:5/4)]:max-h-none [@media(min-width:1024px)_and_(min-aspect-ratio:5/4)]:max-w-md [@media(min-width:1024px)_and_(min-aspect-ratio:5/4)]:border-t-0 [@media(min-width:1024px)_and_(min-aspect-ratio:5/4)]:border-l">
+          <div className="p-3 lg:p-4 short:p-2 border-b border-smoked-brown/30 shrink-0">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="font-[family-name:var(--font-cinzel)] text-base lg:text-lg font-bold">Panier</h2>
               <Badge variant="default">{cart.length} articles</Badge>
             </div>
             <div className="flex flex-wrap gap-1.5 mb-2">
@@ -367,14 +375,14 @@ function POSPageInner() {
                 setTableNumber(n);
                 setTableId(tables.find((t) => t.number === n)?.id ?? null);
               }}
-              className="h-10"
+              className="h-9 short:h-8"
             />
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          <div className="flex-1 overflow-y-auto p-3 lg:p-4 short:p-2 space-y-2 min-h-0">
             <AnimatePresence>
               {cart.length === 0 ? (
-                <p className="text-center text-off-white/40 py-12">
+                <p className="text-center text-off-white/40 py-6 short:py-3 text-sm">
                   Panier vide — ajoutez des produits pour créer une commande
                 </p>
               ) : (
@@ -384,17 +392,17 @@ function POSPageInner() {
                     initial={{ opacity: 0, x: 20 }}
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: -20 }}
-                    className="flex items-center gap-3 p-3 rounded-xl bg-charcoal/60 border border-smoked-brown/20"
+                    className="flex items-center gap-2 p-2 lg:p-3 rounded-xl bg-charcoal/60 border border-smoked-brown/20"
                   >
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{item.product.name}</p>
+                      <p className="text-sm short:text-xs font-medium truncate">{item.product.name}</p>
                       <p className="text-xs text-primary">{formatCurrency(item.product.selling_price)}</p>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
                       <button onClick={() => updateQuantity(item.product.id, -1)} className="p-1 rounded-lg hover:bg-smoked-brown/30">
                         <Minus className="h-3 w-3" />
                       </button>
-                      <span className="w-6 text-center text-sm font-bold">{item.quantity}</span>
+                      <span className="w-5 text-center text-sm font-bold">{item.quantity}</span>
                       <button onClick={() => updateQuantity(item.product.id, 1)} className="p-1 rounded-lg hover:bg-smoked-brown/30">
                         <Plus className="h-3 w-3" />
                       </button>
@@ -408,7 +416,7 @@ function POSPageInner() {
             </AnimatePresence>
           </div>
 
-          <div className="p-4 border-t border-smoked-brown/30 space-y-3">
+          <div className="p-3 lg:p-4 short:p-2 border-t border-smoked-brown/30 space-y-2 shrink-0">
             <div className="flex items-center gap-2">
               <Percent className="h-4 w-4 text-off-white/40" />
               <Input
@@ -416,11 +424,11 @@ function POSPageInner() {
                 placeholder="Remise (FCFA)"
                 value={discount || ""}
                 onChange={(e) => setDiscount(parseFloat(e.target.value) || 0)}
-                className="h-9"
+                className="h-9 short:h-8"
               />
             </div>
 
-            <div className="space-y-1 text-sm">
+            <div className="space-y-0.5 text-sm short:text-xs">
               <div className="flex justify-between text-off-white/60">
                 <span>Sous-total</span><span>{formatCurrency(totals.subtotal)}</span>
               </div>
@@ -429,10 +437,12 @@ function POSPageInner() {
                   <span>Remise</span><span>-{formatCurrency(discount)}</span>
                 </div>
               )}
-              <div className="flex justify-between text-off-white/60">
-                <span>TVA ({VAT_RATE}%)</span><span>{formatCurrency(totals.tax)}</span>
-              </div>
-              <div className="flex justify-between text-lg font-bold text-off-white pt-2 border-t border-smoked-brown/30">
+              {VAT_RATE > 0 && (
+                <div className="flex justify-between text-off-white/60">
+                  <span>TVA ({VAT_RATE}%)</span><span>{formatCurrency(totals.tax)}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-base lg:text-lg font-bold text-off-white pt-1.5 border-t border-smoked-brown/30">
                 <span>Total</span><span className="text-primary">{formatCurrency(totals.total)}</span>
               </div>
             </div>
@@ -441,7 +451,7 @@ function POSPageInner() {
               <Button variant="outline" onClick={() => { setCart([]); setDiscount(0); }} disabled={cart.length === 0}>
                 <X className="h-4 w-4" /> Annuler
               </Button>
-              <Button size="lg" onClick={() => setShowPayment(true)} disabled={cart.length === 0}>
+              <Button size="lg" className="short:h-10" onClick={() => setShowPayment(true)} disabled={cart.length === 0}>
                 Payer
               </Button>
             </div>

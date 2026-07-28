@@ -13,9 +13,9 @@ export default async function DashboardLayout({
   if (!profile) redirect("/login");
 
   return (
-    <div className="flex min-h-screen bg-black">
+    <div className="flex min-h-dvh bg-black square:min-h-0 square:h-dvh">
       <Sidebar profile={profile} />
-      <main className="flex-1 min-h-screen overflow-x-hidden">
+      <main className="flex-1 min-h-dvh min-w-0 overflow-x-hidden square:min-h-0 square:h-dvh square:overflow-y-auto">
         {children}
       </main>
     </div>

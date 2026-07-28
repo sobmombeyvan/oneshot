@@ -12,7 +12,8 @@
     "supabase:db:push": "supabase db push",
     "supabase:db:reset": "supabase db reset",
     "supabase:start": "supabase start",
-    "supabase:stop": "supabase stop"
+    "supabase:stop": "supabase stop",
+    "printer:bridge": "node scripts/xprinter-bridge.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.2",

@@ -120,7 +120,7 @@ export function StationScreen({ title, subtitle, station, icon: Icon }: StationS
   });
 
   const handlePrintTicket = (order: KitchenOrder) => {
-    setTicket({
+    const receiptData: ReceiptData = {
       title: `Ticket ${station}`,
       orderId: order.id,
       tableNumber: order.table_number,
@@ -135,8 +135,9 @@ export function StationScreen({ title, subtitle, station, icon: Icon }: StationS
       tax: 0,
       total: 0,
       notes: order.notes,
-    });
-    printReceipt();
+    };
+    setTicket(receiptData);
+    void printReceipt(receiptData);
   };
 
   return (
@@ -156,7 +157,7 @@ export function StationScreen({ title, subtitle, station, icon: Icon }: StationS
           </Button>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 [@media(min-width:1024px)_and_(min-aspect-ratio:5/4)]:grid-cols-3 gap-4 lg:gap-6">
           {STATUS_COLUMNS.map((col) => {
             const colOrders = orders.filter((o) => o.status === col.key);
             return (

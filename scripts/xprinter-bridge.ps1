@@ -1,22 +1,27 @@
-# ONE SHOT POS printer bridge (NO Node.js required)
-# Default printer: POS-58
-# Start: double-click start-xprinter-bridge.bat
-# Or:   powershell -ExecutionPolicy Bypass -File scripts\xprinter-bridge.ps1
+# ONE SHOT POS printer bridge - NO Node.js required
+# Works on PowerShell 2.0+ (Windows 7 / 10 / 11 / Server)
+#
+# Start with: start-xprinter-bridge.bat
+# Health:     http://127.0.0.1:17809/health
 
 param(
-  [string]$PrinterName = $(if ($env:XPRINTER_NAME) { $env:XPRINTER_NAME } else { "POS-58" }),
-  [int]$Port = $(if ($env:XPRINTER_BRIDGE_PORT) { [int]$env:XPRINTER_BRIDGE_PORT } else { 17809 })
+  [string]$PrinterName = "",
+  [int]$Port = 0
 )
 
 $ErrorActionPreference = "Stop"
 
-Add-Type -Language CSharp -TypeDefinition @"
+if ([string]::IsNullOrEmpty($PrinterName)) {
+  if ($env:XPRINTER_NAME) { $PrinterName = $env:XPRINTER_NAME } else { $PrinterName = "POS-58" }
+}
+if ($Port -le 0) {
+  if ($env:XPRINTER_BRIDGE_PORT) { $Port = [int]$env:XPRINTER_BRIDGE_PORT } else { $Port = 17809 }
+}
+
+# C# 2.0 compatible (no 'var', no LINQ) so it compiles on old PowerShell
+$csharp = @'
 using System;
-using System.IO;
-using System.Net;
 using System.Runtime.InteropServices;
-using System.Text;
-using System.Threading;
 
 public class RawPrinterHelper {
   [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
@@ -25,123 +30,168 @@ public class RawPrinterHelper {
     [MarshalAs(UnmanagedType.LPStr)] public string pOutputFile;
     [MarshalAs(UnmanagedType.LPStr)] public string pDataType;
   }
+
   [DllImport("winspool.Drv", EntryPoint="OpenPrinterA", SetLastError=true, CharSet=CharSet.Ansi)]
   public static extern bool OpenPrinter([MarshalAs(UnmanagedType.LPStr)] string szPrinter, out IntPtr hPrinter, IntPtr pd);
+
   [DllImport("winspool.Drv", EntryPoint="ClosePrinter", SetLastError=true)]
   public static extern bool ClosePrinter(IntPtr hPrinter);
+
   [DllImport("winspool.Drv", EntryPoint="StartDocPrinterA", SetLastError=true, CharSet=CharSet.Ansi)]
   public static extern bool StartDocPrinter(IntPtr hPrinter, int level, [In] DOCINFOA di);
+
   [DllImport("winspool.Drv", EntryPoint="EndDocPrinter", SetLastError=true)]
   public static extern bool EndDocPrinter(IntPtr hPrinter);
+
   [DllImport("winspool.Drv", EntryPoint="StartPagePrinter", SetLastError=true)]
   public static extern bool StartPagePrinter(IntPtr hPrinter);
+
   [DllImport("winspool.Drv", EntryPoint="EndPagePrinter", SetLastError=true)]
   public static extern bool EndPagePrinter(IntPtr hPrinter);
+
   [DllImport("winspool.Drv", EntryPoint="WritePrinter", SetLastError=true)]
   public static extern bool WritePrinter(IntPtr hPrinter, IntPtr pBytes, int dwCount, out int dwWritten);
 
-  public static bool SendBytes(string printerName, byte[] bytes) {
-    IntPtr hPrinter;
-    if (!OpenPrinter(printerName, out hPrinter, IntPtr.Zero)) return false;
-    var di = new DOCINFOA();
+  public static string SendBytes(string printerName, byte[] bytes) {
+    IntPtr hPrinter = IntPtr.Zero;
+    if (!OpenPrinter(printerName, out hPrinter, IntPtr.Zero)) {
+      return "OpenPrinter failed (code " + Marshal.GetLastWin32Error() + ") for: " + printerName;
+    }
+
+    DOCINFOA di = new DOCINFOA();
     di.pDocName = "ONE SHOT Ticket";
     di.pDataType = "RAW";
-    if (!StartDocPrinter(hPrinter, 1, di)) { ClosePrinter(hPrinter); return false; }
+
+    if (!StartDocPrinter(hPrinter, 1, di)) {
+      ClosePrinter(hPrinter);
+      return "StartDocPrinter failed (code " + Marshal.GetLastWin32Error() + ")";
+    }
+
     StartPagePrinter(hPrinter);
-    IntPtr p = Marshal.AllocHGlobal(bytes.Length);
-    Marshal.Copy(bytes, 0, p, bytes.Length);
-    int written;
-    bool ok = WritePrinter(hPrinter, p, bytes.Length, out written);
-    Marshal.FreeHGlobal(p);
+
+    IntPtr buffer = Marshal.AllocHGlobal(bytes.Length);
+    Marshal.Copy(bytes, 0, buffer, bytes.Length);
+    int written = 0;
+    bool ok = WritePrinter(hPrinter, buffer, bytes.Length, out written);
+    int err = Marshal.GetLastWin32Error();
+    Marshal.FreeHGlobal(buffer);
+
     EndPagePrinter(hPrinter);
     EndDocPrinter(hPrinter);
     ClosePrinter(hPrinter);
-    return ok;
+
+    if (!ok) { return "WritePrinter failed (code " + err + ")"; }
+    return "";
   }
 }
-"@
+'@
 
-function Get-EscPosBytes([string[]]$Lines, [bool]$OpenDrawer) {
-  $ms = New-Object System.IO.MemoryStream
-  $bw = New-Object System.IO.BinaryWriter($ms)
+Add-Type -TypeDefinition $csharp -Language CSharp
 
-  # INIT, center, double size, bold
-  $bw.Write([byte[]](0x1B, 0x40))
-  $bw.Write([byte[]](0x1B, 0x61, 0x01))
-  $bw.Write([byte[]](0x1D, 0x21, 0x11))
-  $bw.Write([byte[]](0x1B, 0x45, 0x01))
+$enc = [System.Text.Encoding]::GetEncoding(437)
+
+function Get-EscPosBytes {
+  param([string[]]$Lines, [bool]$OpenDrawer)
+
+  $stream = New-Object System.IO.MemoryStream
+  $writer = New-Object System.IO.BinaryWriter($stream)
+
+  # init + center + double size + bold (header)
+  $writer.Write([byte[]](0x1B, 0x40))
+  $writer.Write([byte[]](0x1B, 0x61, 0x01))
+  $writer.Write([byte[]](0x1D, 0x21, 0x11))
+  $writer.Write([byte[]](0x1B, 0x45, 0x01))
 
   $phase = "header"
-  foreach ($line in $Lines) {
-    if ($null -eq $line) { continue }
-    $text = ([string]$line).TrimEnd()
-    if ([string]::IsNullOrWhiteSpace($text)) { continue }
 
-    if ($text.StartsWith("---") -or $text.StartsWith("===")) {
-      if ($phase -eq "header") {
-        $bw.Write([byte[]](0x1B, 0x45, 0x00))
-        $bw.Write([byte[]](0x1D, 0x21, 0x00))
-        $bw.Write([byte[]](0x1B, 0x61, 0x00))
-        $phase = "body"
-      }
-      $bw.Write([Text.Encoding]::GetEncoding(437).GetBytes($text))
-      $bw.Write([byte]0x0A)
+  foreach ($line in $Lines) {
+    if ($line -eq $null) { continue }
+    $text = ([string]$line).TrimEnd()
+    if ($text.Length -eq 0) { continue }
+
+    $isRule = $text.StartsWith("---") -or $text.StartsWith("===")
+
+    if ($isRule -and $phase -eq "header") {
+      $writer.Write([byte[]](0x1B, 0x45, 0x00))
+      $writer.Write([byte[]](0x1D, 0x21, 0x00))
+      $writer.Write([byte[]](0x1B, 0x61, 0x00))
+      $phase = "body"
+    }
+
+    if ($phase -eq "body" -and $text.StartsWith("TOTAL")) {
+      $writer.Write([byte[]](0x1D, 0x21, 0x01))
+      $writer.Write([byte[]](0x1B, 0x45, 0x01))
+      $writer.Write($enc.GetBytes($text))
+      $writer.Write([byte]0x0A)
+      $writer.Write([byte[]](0x1D, 0x21, 0x00))
+      $writer.Write([byte[]](0x1B, 0x45, 0x00))
       continue
     }
+
+    $writer.Write($enc.GetBytes($text))
+    $writer.Write([byte]0x0A)
 
     if ($phase -eq "header") {
-      $bw.Write([Text.Encoding]::GetEncoding(437).GetBytes($text))
-      $bw.Write([byte]0x0A)
-      $bw.Write([byte[]](0x1D, 0x21, 0x01))
-      $bw.Write([byte[]](0x1B, 0x45, 0x00))
-      continue
+      # brand line printed big, remaining header lines smaller
+      $writer.Write([byte[]](0x1D, 0x21, 0x01))
+      $writer.Write([byte[]](0x1B, 0x45, 0x00))
     }
-
-    if ($text.StartsWith("TOTAL")) {
-      $bw.Write([byte[]](0x1D, 0x21, 0x01))
-      $bw.Write([byte[]](0x1B, 0x45, 0x01))
-      $bw.Write([Text.Encoding]::GetEncoding(437).GetBytes($text))
-      $bw.Write([byte]0x0A)
-      $bw.Write([byte[]](0x1D, 0x21, 0x00))
-      $bw.Write([byte[]](0x1B, 0x45, 0x00))
-      continue
-    }
-
-    $bw.Write([Text.Encoding]::GetEncoding(437).GetBytes($text))
-    $bw.Write([byte]0x0A)
   }
 
   if ($OpenDrawer) {
-    # ESC p 0 25 250 — pin 2
-    $bw.Write([byte[]](0x1B, 0x70, 0x00, 0x19, 0xFA))
-    # also pulse pin 5 for some POS-58 models
-    $bw.Write([byte[]](0x1B, 0x70, 0x01, 0x19, 0xFA))
+    $writer.Write([byte[]](0x1B, 0x70, 0x00, 0x19, 0xFA))
+    $writer.Write([byte[]](0x1B, 0x70, 0x01, 0x19, 0xFA))
   }
 
-  # partial cut
-  $bw.Write([byte[]](0x1D, 0x56, 0x42, 0x03))
-  $bw.Flush()
-  return $ms.ToArray()
+  # partial cut with minimal feed
+  $writer.Write([byte[]](0x1D, 0x56, 0x42, 0x03))
+  $writer.Flush()
+
+  return $stream.ToArray()
 }
 
-function Send-Raw([string]$Name, [byte[]]$Bytes) {
-  $ok = [RawPrinterHelper]::SendBytes($Name, $Bytes)
-  if (-not $ok) { throw "Winspool raw print failed for printer: $Name" }
+function Get-DrawerBytes {
+  $stream = New-Object System.IO.MemoryStream
+  $writer = New-Object System.IO.BinaryWriter($stream)
+  $writer.Write([byte[]](0x1B, 0x40))
+  $writer.Write([byte[]](0x1B, 0x70, 0x00, 0x19, 0xFA))
+  $writer.Write([byte[]](0x1B, 0x70, 0x01, 0x19, 0xFA))
+  $writer.Flush()
+  return $stream.ToArray()
+}
+
+function Send-Raw {
+  param([string]$Name, [byte[]]$Bytes)
+  $err = [RawPrinterHelper]::SendBytes($Name, $Bytes)
+  if ($err -ne "") { throw $err }
 }
 
 function Get-PrinterNames {
   try {
-    return @(Get-Printer | Select-Object -ExpandProperty Name)
+    $list = @()
+    $wmi = Get-WmiObject -Class Win32_Printer -ErrorAction SilentlyContinue
+    foreach ($p in $wmi) { $list += [string]$p.Name }
+    return $list
   } catch {
     return @()
   }
 }
 
-function Write-JsonResponse($Context, [int]$Status, $Obj) {
-  $json = ($Obj | ConvertTo-Json -Compress -Depth 6)
-  $bytes = [Text.Encoding]::UTF8.GetBytes($json)
+function Escape-Json {
+  param([string]$Value)
+  if ($Value -eq $null) { return "" }
+  $out = $Value.Replace('\', '\\')
+  $out = $out.Replace('"', '\"')
+  $out = $out.Replace("`r", " ")
+  $out = $out.Replace("`n", " ")
+  return $out
+}
+
+function Send-Json {
+  param($Context, [int]$Status, [string]$Json)
+  $bytes = [System.Text.Encoding]::UTF8.GetBytes($Json)
   $Context.Response.StatusCode = $Status
-  $Context.Response.ContentType = "application/json; charset=utf-8"
+  $Context.Response.ContentType = "application/json"
   $Context.Response.Headers["Access-Control-Allow-Origin"] = "*"
   $Context.Response.Headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
   $Context.Response.Headers["Access-Control-Allow-Headers"] = "Content-Type"
@@ -149,87 +199,78 @@ function Write-JsonResponse($Context, [int]$Status, $Obj) {
   $Context.Response.Close()
 }
 
-function Read-Body($Request) {
-  $reader = New-Object IO.StreamReader($Request.InputStream, $Request.ContentEncoding)
-  try {
-    $raw = $reader.ReadToEnd()
-    if ([string]::IsNullOrWhiteSpace($raw)) { return @{} }
-    return ($raw | ConvertFrom-Json)
-  } finally {
-    $reader.Close()
-  }
-}
-
 $listener = New-Object System.Net.HttpListener
-$prefix = "http://127.0.0.1:$Port/"
+$prefix = "http://127.0.0.1:" + $Port + "/"
 $listener.Prefixes.Add($prefix)
 $listener.Start()
 
-Write-Host "ONE SHOT bridge (no Node) running"
-Write-Host "Printer: $PrinterName"
-Write-Host "URL: $prefix"
-Write-Host "Health: ${prefix}health"
-Write-Host "Keep this window open."
+Write-Host ""
+Write-Host "ONE SHOT printer bridge is RUNNING (no Node.js)"
+Write-Host ("Printer : " + $PrinterName)
+Write-Host ("Health  : " + $prefix + "health")
+Write-Host "Keep this window OPEN while using the POS."
+Write-Host ""
 
 while ($listener.IsListening) {
   $context = $listener.GetContext()
-  $req = $context.Request
-  $path = $req.Url.AbsolutePath.TrimEnd("/").ToLowerInvariant()
+  $request = $context.Request
+  $path = $request.Url.AbsolutePath.ToLower().TrimEnd('/')
+  if ($path -eq "") { $path = "/" }
 
   try {
-    if ($req.HttpMethod -eq "OPTIONS") {
-      $context.Response.StatusCode = 204
-      $context.Response.Headers["Access-Control-Allow-Origin"] = "*"
-      $context.Response.Headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-      $context.Response.Headers["Access-Control-Allow-Headers"] = "Content-Type"
-      $context.Response.Close()
+    if ($request.HttpMethod -eq "OPTIONS") {
+      Send-Json $context 204 "{}"
       continue
     }
 
-    if ($path -eq "/health" -and $req.HttpMethod -eq "GET") {
-      Write-JsonResponse $context 200 @{
-        ok = $true
-        mode = "winspool-ps"
-        printer = $PrinterName
-        printers = @(Get-PrinterNames)
-      }
+    if ($path -eq "/health") {
+      $names = Get-PrinterNames
+      $parts = @()
+      foreach ($n in $names) { $parts += ('"' + (Escape-Json $n) + '"') }
+      $printersJson = [string]::Join(",", $parts)
+      $json = '{"ok":true,"mode":"winspool-ps","printer":"' + (Escape-Json $PrinterName) + '","printers":[' + $printersJson + ']}'
+      Send-Json $context 200 $json
       continue
     }
 
-    if ($path -eq "/open-drawer" -and $req.HttpMethod -eq "POST") {
-      $body = Read-Body $req
-      $name = if ($body.printerName) { [string]$body.printerName } else { $PrinterName }
-      $bytes = Get-EscPosBytes @() $true
-      # drawer-only payload
-      $ms = New-Object IO.MemoryStream
-      $bw = New-Object IO.BinaryWriter($ms)
-      $bw.Write([byte[]](0x1B, 0x40))
-      $bw.Write([byte[]](0x1B, 0x70, 0x00, 0x19, 0xFA))
-      $bw.Write([byte[]](0x1B, 0x70, 0x01, 0x19, 0xFA))
-      $bw.Flush()
-      Send-Raw $name $ms.ToArray()
-      Write-JsonResponse $context 200 @{ ok = $true }
+    $targetPrinter = $PrinterName
+    $queryPrinter = $request.QueryString["printer"]
+    if ($queryPrinter -and $queryPrinter.Trim().Length -gt 0) { $targetPrinter = $queryPrinter }
+
+    if ($path -eq "/open-drawer") {
+      Send-Raw $targetPrinter (Get-DrawerBytes)
+      Send-Json $context 200 '{"ok":true}'
       continue
     }
 
-    if ($path -eq "/print-receipt" -and $req.HttpMethod -eq "POST") {
-      $body = Read-Body $req
-      $name = if ($body.printerName) { [string]$body.printerName } else { $PrinterName }
-      $lines = @()
-      if ($body.lines) { $lines = @($body.lines | ForEach-Object { [string]$_ }) }
-      if ($lines.Count -eq 0) {
-        Write-JsonResponse $context 400 @{ ok = $false; error = "Missing lines[]" }
+    if ($path -eq "/print-receipt") {
+      $reader = New-Object System.IO.StreamReader($request.InputStream, [System.Text.Encoding]::UTF8)
+      $raw = $reader.ReadToEnd()
+      $reader.Close()
+
+      if ($raw -eq $null -or $raw.Trim().Length -eq 0) {
+        Send-Json $context 400 '{"ok":false,"error":"empty body"}'
         continue
       }
-      $openDrawer = [bool]$body.openDrawer
-      $payload = Get-EscPosBytes $lines $openDrawer
-      Send-Raw $name $payload
-      Write-JsonResponse $context 200 @{ ok = $true; drawer = $openDrawer }
+
+      $lines = $raw -split "`n"
+      for ($i = 0; $i -lt $lines.Length; $i++) { $lines[$i] = ([string]$lines[$i]).TrimEnd("`r") }
+
+      $drawerParam = $request.QueryString["drawer"]
+      $openDrawer = ($drawerParam -eq "1" -or $drawerParam -eq "true")
+
+      Send-Raw $targetPrinter (Get-EscPosBytes $lines $openDrawer)
+
+      $drawerJson = "false"
+      if ($openDrawer) { $drawerJson = "true" }
+      Send-Json $context 200 ('{"ok":true,"drawer":' + $drawerJson + '}')
       continue
     }
 
-    Write-JsonResponse $context 404 @{ ok = $false; error = "Not found" }
+    Send-Json $context 404 '{"ok":false,"error":"not found"}'
   } catch {
-    Write-JsonResponse $context 500 @{ ok = $false; error = $_.Exception.Message }
+    $message = Escape-Json ([string]$_.Exception.Message)
+    Write-Host ("ERROR: " + $message)
+    try { Send-Json $context 500 ('{"ok":false,"error":"' + $message + '"}') } catch { }
   }
 }

@@ -41,22 +41,29 @@ const SIZE_DOUBLE = Buffer.from([0x1d, 0x21, 0x11]); // double W+H
 const SIZE_TALL = Buffer.from([0x1d, 0x21, 0x01]); // double height
 const CUT_CMD = Buffer.from([0x1d, 0x56, 0x42, 0x03]);
 
-function readJsonBody(req) {
+function readRawBody(req) {
   return new Promise((resolve, reject) => {
     let raw = "";
     req.on("data", (chunk) => {
       raw += chunk.toString("utf8");
       if (raw.length > 128000) reject(new Error("Payload too large"));
     });
-    req.on("end", () => {
-      try {
-        resolve(raw ? JSON.parse(raw) : {});
-      } catch {
-        reject(new Error("Invalid JSON body"));
-      }
-    });
+    req.on("end", () => resolve(raw));
     req.on("error", reject);
   });
+}
+
+/** Accepts plain-text lines (preferred) or legacy JSON { lines: [] } */
+function parseBody(raw) {
+  if (!raw || !raw.trim()) return { lines: [] };
+  if (raw.trimStart().startsWith("{")) {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      /* fall through to text */
+    }
+  }
+  return { lines: raw.split("\n").map((l) => l.replace(/\r$/, "")) };
 }
 
 function toEscPosBuffer(lines, openDrawer = false) {
@@ -93,7 +100,10 @@ function toEscPosBuffer(lines, openDrawer = false) {
     parts.push(Buffer.from(text, "utf8"), Buffer.from("\n", "utf8"));
   }
 
-  if (openDrawer) parts.push(DRAWER_CMD);
+  if (openDrawer) {
+    parts.push(DRAWER_CMD);
+    parts.push(Buffer.from([0x1b, 0x70, 0x01, 0x19, 0xfa]));
+  }
   parts.push(CUT_CMD);
   return Buffer.concat(parts);
 }
@@ -256,7 +266,11 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.url === "/health") {
+  const url = new URL(req.url, "http://127.0.0.1");
+  const route = url.pathname.replace(/\/$/, "") || "/";
+  const queryPrinter = url.searchParams.get("printer") || undefined;
+
+  if (route === "/health") {
     const printers = await listPrinters();
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(
@@ -270,10 +284,10 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.url === "/open-drawer" && req.method === "POST") {
+  if (route === "/open-drawer" && req.method === "POST") {
     try {
-      const body = await readJsonBody(req);
-      await openDrawer(body?.printerName);
+      const body = parseBody(await readRawBody(req));
+      await openDrawer(queryPrinter ?? body?.printerName);
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ok: true }));
     } catch (err) {
@@ -283,18 +297,21 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.url === "/print-receipt" && req.method === "POST") {
+  if (route === "/print-receipt" && req.method === "POST") {
     try {
-      const body = await readJsonBody(req);
-      const lines = Array.isArray(body?.lines) ? body.lines : [];
+      const body = parseBody(await readRawBody(req));
+      const lines = Array.isArray(body?.lines) ? body.lines.filter((l) => l !== undefined) : [];
       if (lines.length === 0) {
         res.writeHead(400, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ ok: false, error: "Missing lines[]" }));
+        res.end(JSON.stringify({ ok: false, error: "Missing lines" }));
         return;
       }
-      await printReceipt(lines, !!body?.openDrawer, body?.printerName);
+      const drawerParam = url.searchParams.get("drawer");
+      const openDrawerFlag =
+        drawerParam === "1" || drawerParam === "true" || !!body?.openDrawer;
+      await printReceipt(lines, openDrawerFlag, queryPrinter ?? body?.printerName);
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ ok: true, drawer: !!body?.openDrawer }));
+      res.end(JSON.stringify({ ok: true, drawer: openDrawerFlag }));
     } catch (err) {
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ok: false, error: err.message }));

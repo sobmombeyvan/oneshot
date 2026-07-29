@@ -76,10 +76,14 @@ declare global {
 
 async function openViaBridge(bridgeUrl: string, printerName?: string): Promise<boolean> {
   const base = bridgeUrl.replace(/\/$/, "");
-  const res = await fetch(`${base}/open-drawer`, {
+  const params = new URLSearchParams();
+  if (printerName) params.set("printer", printerName);
+  const query = params.toString();
+
+  const res = await fetch(`${base}/open-drawer${query ? `?${query}` : ""}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ printerName: printerName || undefined }),
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: "",
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");

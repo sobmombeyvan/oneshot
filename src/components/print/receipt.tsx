@@ -220,26 +220,28 @@ function toReceiptLines(data: ReceiptData, paperWidth: PaperWidth): string[] {
 async function printViaBridge(data: ReceiptData): Promise<boolean> {
   const settings = getCashDrawerSettings();
   if (!settings.bridgeUrl) return false;
+
   const base = settings.bridgeUrl.replace(/\/$/, "");
   const openDrawer =
     settings.enabled !== false &&
     (data.paymentMethod === "cash" || data.paymentMethod === "Cash");
-  const response = await fetch(`${base}/print-receipt`, {
+
+  const params = new URLSearchParams({ drawer: openDrawer ? "1" : "0" });
+  if (settings.windowsPrinterName) params.set("printer", settings.windowsPrinterName);
+
+  const response = await fetch(`${base}/print-receipt?${params.toString()}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      lines: toReceiptLines(data, settings.paperWidth),
-      openDrawer,
-      paperWidth: settings.paperWidth,
-      printerName: settings.windowsPrinterName || undefined,
-    }),
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: toReceiptLines(data, settings.paperWidth).join("\n"),
   });
+
   if (!response.ok) {
     const err = await response.text().catch(() => "");
     throw new Error(err || `Bridge HTTP ${response.status}`);
   }
-  const json = (await response.json().catch(() => ({ ok: false }))) as BridgePrintResponse;
-  return !!json.ok;
+
+  const json = (await response.json().catch(() => ({ ok: true }))) as BridgePrintResponse;
+  return json.ok !== false;
 }
 
 export async function printReceipt(data?: ReceiptData): Promise<{ ok: boolean; via: "bridge" | "browser"; drawer?: boolean; error?: string }> {

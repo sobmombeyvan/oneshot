@@ -34,8 +34,10 @@ if ($LeftPad -gt 0) { $script:LeftMargin = "".PadRight($LeftPad, [char]' ') }
 # Keep a log next to the script so failures are visible after the window closes
 $script:LogFile = ""
 $script:StatusFile = ""
+$script:SelfPath = ""
 try {
-  $here = Split-Path -Parent $MyInvocation.MyCommand.Definition
+  $script:SelfPath = $MyInvocation.MyCommand.Definition
+  $here = Split-Path -Parent $script:SelfPath
   if ($here) {
     $script:LogFile = Join-Path $here "bridge-log.txt"
     $script:StatusFile = Join-Path $here "bridge-status.txt"
@@ -155,6 +157,168 @@ public class RawPrinterHelper {
 
     if (!ok) { return "WritePrinter failed (code " + err + ")"; }
     return "";
+  }
+}
+
+// Listening socket built straight on Winsock.
+// System.Net.Sockets cannot even be constructed when the .NET configuration
+// system fails to initialise, which is what happens on Windows 7 PCs whose
+// powershell.exe.config carries .NET 4 only sections. ws2_32.dll has no such
+// dependency, so this keeps working where the managed classes do not.
+public class WinsockServer {
+  const int AF_INET = 2;
+  const int SOCK_STREAM = 1;
+  const int IPPROTO_TCP = 6;
+  const int SOL_SOCKET = 0xffff;
+  const int SO_RCVTIMEO = 0x1006;
+  const int SO_SNDTIMEO = 0x1005;
+
+  [DllImport("ws2_32.dll")]
+  static extern int WSAStartup(ushort version, byte[] data);
+  [DllImport("ws2_32.dll")]
+  static extern int WSACleanup();
+  [DllImport("ws2_32.dll")]
+  static extern int WSAGetLastError();
+  [DllImport("ws2_32.dll")]
+  static extern IntPtr socket(int af, int type, int protocol);
+  [DllImport("ws2_32.dll")]
+  static extern int bind(IntPtr s, byte[] addr, int addrlen);
+  [DllImport("ws2_32.dll")]
+  static extern int listen(IntPtr s, int backlog);
+  [DllImport("ws2_32.dll")]
+  static extern IntPtr accept(IntPtr s, IntPtr addr, IntPtr addrlen);
+  [DllImport("ws2_32.dll")]
+  static extern int recv(IntPtr s, byte[] buf, int len, int flags);
+  [DllImport("ws2_32.dll")]
+  static extern int send(IntPtr s, byte[] buf, int len, int flags);
+  [DllImport("ws2_32.dll")]
+  static extern int closesocket(IntPtr s);
+  [DllImport("ws2_32.dll")]
+  static extern int setsockopt(IntPtr s, int level, int name, ref int val, int len);
+
+  static IntPtr listenSocket = IntPtr.Zero;
+  static bool started = false;
+
+  public static int LastError() { return WSAGetLastError(); }
+
+  public static string Start(int port) {
+    byte[] wsaData = new byte[512];
+    int rc = WSAStartup((ushort)0x0202, wsaData);
+    if (rc != 0) { return "WSAStartup failed (code " + rc + ")"; }
+    started = true;
+
+    listenSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (listenSocket == IntPtr.Zero || listenSocket.ToInt64() == -1) {
+      return "socket() failed (code " + WSAGetLastError() + ")";
+    }
+
+    // sockaddr_in for 127.0.0.1:port, port in network byte order
+    byte[] addr = new byte[16];
+    addr[0] = (byte)AF_INET;
+    addr[1] = 0;
+    addr[2] = (byte)((port >> 8) & 0xFF);
+    addr[3] = (byte)(port & 0xFF);
+    addr[4] = 127; addr[5] = 0; addr[6] = 0; addr[7] = 1;
+
+    if (bind(listenSocket, addr, 16) != 0) {
+      int err = WSAGetLastError();
+      if (err == 10048) { return "port " + port + " is already taken (code 10048)"; }
+      return "bind() failed (code " + err + ")";
+    }
+
+    if (listen(listenSocket, 16) != 0) {
+      return "listen() failed (code " + WSAGetLastError() + ")";
+    }
+    return "";
+  }
+
+  public static WinsockStream Accept() {
+    IntPtr client = accept(listenSocket, IntPtr.Zero, IntPtr.Zero);
+    if (client == IntPtr.Zero || client.ToInt64() == -1) {
+      throw new System.IO.IOException("accept() failed (code " + WSAGetLastError() + ")");
+    }
+    return new WinsockStream(client);
+  }
+
+  public static void Stop() {
+    if (listenSocket != IntPtr.Zero && listenSocket.ToInt64() != -1) {
+      closesocket(listenSocket);
+      listenSocket = IntPtr.Zero;
+    }
+    if (started) { WSACleanup(); started = false; }
+  }
+
+  internal static int Receive(IntPtr s, byte[] buf, int len) { return recv(s, buf, len, 0); }
+  internal static int Transmit(IntPtr s, byte[] buf, int len) { return send(s, buf, len, 0); }
+  internal static void Shut(IntPtr s) { closesocket(s); }
+  internal static void Timeout(IntPtr s, bool read, int ms) {
+    int value = ms;
+    setsockopt(s, SOL_SOCKET, read ? SO_RCVTIMEO : SO_SNDTIMEO, ref value, 4);
+  }
+}
+
+// A normal Stream on top of a raw socket, so the HTTP code does not need to
+// know which transport it is talking to.
+public class WinsockStream : System.IO.Stream {
+  IntPtr sock;
+  int readMs = 15000;
+  int writeMs = 15000;
+
+  public WinsockStream(IntPtr s) { sock = s; }
+
+  public override bool CanRead { get { return true; } }
+  public override bool CanWrite { get { return true; } }
+  public override bool CanSeek { get { return false; } }
+  public override bool CanTimeout { get { return true; } }
+  public override long Length { get { throw new NotSupportedException(); } }
+  public override long Position {
+    get { throw new NotSupportedException(); }
+    set { throw new NotSupportedException(); }
+  }
+  public override void SetLength(long value) { throw new NotSupportedException(); }
+  public override long Seek(long offset, System.IO.SeekOrigin origin) { throw new NotSupportedException(); }
+  public override void Flush() { }
+
+  public override int ReadTimeout {
+    get { return readMs; }
+    set { readMs = value; WinsockServer.Timeout(sock, true, value); }
+  }
+  public override int WriteTimeout {
+    get { return writeMs; }
+    set { writeMs = value; WinsockServer.Timeout(sock, false, value); }
+  }
+
+  public override int Read(byte[] buffer, int offset, int count) {
+    if (count <= 0) { return 0; }
+    byte[] tmp = new byte[count];
+    int n = WinsockServer.Receive(sock, tmp, count);
+    // A closed peer or a timeout both mean "no more data": reported as EOF so
+    // one dead browser connection cannot bring the bridge down.
+    if (n <= 0) { return 0; }
+    Buffer.BlockCopy(tmp, 0, buffer, offset, n);
+    return n;
+  }
+
+  public override void Write(byte[] buffer, int offset, int count) {
+    int sent = 0;
+    while (sent < count) {
+      int remaining = count - sent;
+      byte[] slice = new byte[remaining];
+      Buffer.BlockCopy(buffer, offset + sent, slice, 0, remaining);
+      int n = WinsockServer.Transmit(sock, slice, remaining);
+      if (n <= 0) {
+        throw new System.IO.IOException("send() failed (code " + WinsockServer.LastError() + ")");
+      }
+      sent += n;
+    }
+  }
+
+  public override void Close() {
+    if (sock != IntPtr.Zero) {
+      WinsockServer.Shut(sock);
+      sock = IntPtr.Zero;
+    }
+    base.Close();
   }
 }
 '@
@@ -476,10 +640,54 @@ if ($Stop) {
   exit 0
 }
 
-$listener = New-Object System.Net.Sockets.TcpListener([System.Net.IPAddress]::Loopback, $Port)
+# Transport selection.
+# .NET's own socket classes need the .NET configuration system, and Windows
+# ships powershell.exe.config with .NET 4 only sections. Under the older .NET
+# that Windows 7 uses, that config fails to load and then NOTHING in
+# System.Net can even be constructed - printing keeps working, only the
+# network side dies. When that happens we fall back to calling Winsock
+# directly, which needs no config, no admin and no extra software.
+$script:Transport = "net"
+
+$listener = $null
+$socketError = ""
+try {
+  $listener = New-Object System.Net.Sockets.TcpListener([System.Net.IPAddress]::Loopback, $Port)
+} catch {
+  $socketError = [string]$_.Exception.Message
+}
+
+if ($listener -eq $null) {
+  Write-Host ""
+  Write-Host ".NET sockets are unavailable on this PC:"
+  Write-Host ("  " + $socketError)
+  Write-Host ""
+  Write-Host "Switching to direct Winsock mode..."
+
+  $winsockError = [WinsockServer]::Start($Port)
+  if ($winsockError -ne "") {
+    Write-Host ""
+    Write-Host "COULD NOT START THE BRIDGE"
+    Write-Host ("Winsock refused too: " + $winsockError)
+    Write-Host ""
+    if ($winsockError.Contains("10048")) {
+      Write-Host "A bridge is probably already running."
+      Write-Host "Run stop-bridge.bat, then start this again."
+      Set-Status "PORT_BUSY"
+    } else {
+      Write-Host "Run diagnose.bat and send oneshot-report.txt to the developer."
+      Set-Status "SOCKET_BLOCKED"
+    }
+    Wait-AnyKey
+    exit 1
+  }
+
+  $script:Transport = "winsock"
+  Write-Host "Winsock mode active - the bridge will work normally."
+}
 
 try {
-  $listener.Start()
+  if ($script:Transport -eq "net") { $listener.Start() }
 } catch {
   # The usual cause is the copy started automatically at logon, which runs
   # minimized and is easy to miss. That is not an error: it is already working.
@@ -526,6 +734,7 @@ Write-Host ""
 Write-Host "ONE SHOT printer bridge is RUNNING (no Node.js, no admin)"
 Write-Host ("Printer     : " + $PrinterName)
 Write-Host ("Left margin : " + $LeftPad + " characters")
+Write-Host ("Transport   : " + $script:Transport)
 Write-Host ("Health      : http://127.0.0.1:" + $Port + "/health")
 Write-Host "Keep this window OPEN while using the POS."
 Write-Host ""
@@ -535,9 +744,13 @@ try {
     $client = $null
     $stream = $null
     try {
-      $client = $listener.AcceptTcpClient()
-      $client.NoDelay = $true
-      $stream = $client.GetStream()
+      if ($script:Transport -eq "net") {
+        $client = $listener.AcceptTcpClient()
+        $client.NoDelay = $true
+        $stream = $client.GetStream()
+      } else {
+        $stream = [WinsockServer]::Accept()
+      }
       $stream.ReadTimeout = 15000
       $stream.WriteTimeout = 15000
 
@@ -596,6 +809,7 @@ try {
         foreach ($n in (Get-PrinterNames)) { $parts += ('"' + (Escape-Json $n) + '"') }
         $json = '{"ok":true,"mode":"winspool-ps","printer":"' + (Escape-Json $PrinterName) + '"'
         $json = $json + ',"leftPad":' + $LeftPad
+        $json = $json + ',"transport":"' + $script:Transport + '"'
         $json = $json + ',"printers":[' + [string]::Join(",", $parts) + ']}'
         Send-Http $stream 200 "OK" $json
         continue
@@ -647,5 +861,6 @@ try {
     }
   }
 } finally {
-  try { $listener.Stop() } catch { }
+  if ($listener -ne $null) { try { $listener.Stop() } catch { } }
+  if ($script:Transport -eq "winsock") { try { [WinsockServer]::Stop() } catch { } }
 }

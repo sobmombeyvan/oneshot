@@ -29,6 +29,7 @@ if exist "%STATUSFILE%" set /p STATUS=<"%STATUSFILE%"
 
 if "%STATUS%"=="ALREADY_RUNNING" goto quiet
 if "%STATUS%"=="PORT_BUSY" goto stop
+if "%STATUS%"=="SOCKET_BLOCKED" goto stop
 if "%STATUS%"=="ERROR" goto stop
 if "%STATUS%"=="NONE" goto nostart
 

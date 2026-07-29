@@ -15,7 +15,6 @@ WHAT YOU NEED
       diagnose.bat
       install-autostart.bat
       install-bridge-autostart.ps1
-      diagnose.ps1
       xprinter-bridge.ps1
 4) Google Chrome (recommended) to open the Vercel website
 
@@ -67,9 +66,21 @@ A black window opens and shows:
       ONE SHOT printer bridge is RUNNING (no Node.js, no admin)
       Printer     : POS-58
       Left margin : 1 character
+      Transport   : net
       Health      : http://127.0.0.1:17809/health
 
 Leave this window OPEN (or minimized) while the POS is used.
+
+On some Windows 7 PCs you will first see:
+
+      .NET sockets are unavailable on this PC: ...
+      Switching to direct Winsock mode...
+      Winsock mode active - the bridge will work normally.
+
+That is NOT an error. Windows ships a PowerShell configuration file made for
+a newer .NET, and on those PCs the normal network classes refuse to load.
+The bridge then talks to Windows sockets directly instead. Everything works
+the same, and "Transport" simply shows "winsock".
 
 No UAC prompt, no "run as administrator", no netsh command is needed.
 The bridge listens on 127.0.0.1 only, so it is not reachable from
@@ -95,7 +106,7 @@ Open Chrome on the SAME PC and go to:
 
 You must see something like:
 
-      {"ok":true,"printer":"POS-58","leftPad":1,"printers":["POS-58", ...]}
+      {"ok":true,"printer":"POS-58","leftPad":1,"transport":"net", ...}
 
 Check that your printer appears in the "printers" list.
 
@@ -126,10 +137,12 @@ Expected:
 TROUBLESHOOTING
 ---------------
 IF ANYTHING GOES WRONG, START HERE
-   Double-click diagnose.bat. It writes report.txt next to the scripts:
-   Windows version, PowerShell version, whether .NET can open a socket,
-   every printer name, and which program is using the port.
-   Send report.txt to the developer and the cause is found immediately.
+   Double-click diagnose.bat. It writes oneshot-report.txt on the DESKTOP and
+   opens it in Notepad: Windows version, PowerShell version, whether .NET can
+   open a socket, every printer name, and which program is using the port.
+   Send that file to the developer and the cause is found immediately.
+   diagnose.bat is plain Windows batch, so it still works when PowerShell
+   itself is the broken part.
 
 Every print and every error is also written to:  bridge-log.txt
 
@@ -149,6 +162,10 @@ Amounts print as 1?500?000
 
 "Bridge OFFLINE" in Parametres
    -> open http://127.0.0.1:17809/health in Chrome on that PC
+
+"COULD NOT START THE BRIDGE" / "Winsock refused too"
+   -> this PC cannot open a local port at all. Run diagnose.bat and send
+      oneshot-report.txt to the developer.
 
 "COULD NOT START THE BRIDGE" / port already used
    -> usually it means the bridge is ALREADY running (autostart). Not a bug.

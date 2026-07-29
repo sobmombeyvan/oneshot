@@ -9,6 +9,7 @@ param(
   [int]$Port = 0,
   [int]$LeftPad = -1,
   [switch]$SelfTest,
+  [switch]$Stop,
   [string]$DumpTo = ""
 )
 
@@ -32,10 +33,63 @@ if ($LeftPad -gt 0) { $script:LeftMargin = "".PadRight($LeftPad, [char]' ') }
 
 # Keep a log next to the script so failures are visible after the window closes
 $script:LogFile = ""
+$script:StatusFile = ""
 try {
   $here = Split-Path -Parent $MyInvocation.MyCommand.Definition
-  if ($here) { $script:LogFile = Join-Path $here "bridge-log.txt" }
+  if ($here) {
+    $script:LogFile = Join-Path $here "bridge-log.txt"
+    $script:StatusFile = Join-Path $here "bridge-status.txt"
+  }
 } catch { }
+
+# PowerShell 2.0 (Windows 7) ignores exit codes when launched with -File: it
+# always reports 0, even after a crash. The .bat therefore reads this file
+# instead of %ERRORLEVEL% to know what really happened.
+function Set-Status {
+  param([string]$Value)
+  if ($script:StatusFile -eq "") { return }
+  try { [System.IO.File]::WriteAllText($script:StatusFile, $Value) } catch { }
+}
+
+function Wait-AnyKey {
+  Write-Host ""
+  Write-Host "Press any key to close."
+  try { $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown") } catch { Start-Sleep -Seconds 30 }
+}
+
+Set-Status "STARTING"
+
+# Catches ANY terminating error anywhere below, so the window can never just
+# vanish without telling the cashier what went wrong.
+trap {
+  $reason = "unknown error"
+  try { $reason = [string]$_.Exception.Message } catch { }
+  $where = ""
+  try { $where = [string]$_.InvocationInfo.PositionMessage } catch { }
+
+  Write-Host ""
+  Write-Host "=============================================="
+  Write-Host " THE BRIDGE CRASHED"
+  Write-Host "=============================================="
+  Write-Host ""
+  Write-Host $reason
+  if ($where -ne "") { Write-Host $where }
+  Write-Host ""
+  Write-Host "This text was also saved in bridge-log.txt."
+  Write-Host "Send that file to the developer if it keeps happening."
+
+  if ($script:LogFile -ne "") {
+    try {
+      $stamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+      $entry = $stamp + "  CRASH: " + $reason + [Environment]::NewLine + $where + [Environment]::NewLine
+      [System.IO.File]::AppendAllText($script:LogFile, $entry)
+    } catch { }
+  }
+
+  Set-Status "ERROR"
+  Wait-AnyKey
+  exit 1
+}
 
 # C# 2.0 compatible (no 'var', no LINQ) so it compiles on old PowerShell
 $csharp = @'
@@ -335,24 +389,90 @@ if ($SelfTest -or $DumpTo -ne "") {
   if ($DumpTo -ne "") {
     [System.IO.File]::WriteAllBytes($DumpTo, $bytes)
     Write-Host ("Wrote " + $bytes.Length + " bytes to " + $DumpTo)
+    Set-Status "DUMPED"
     exit 0
   }
 
   Write-Host ("Test ticket -> " + $PrinterName + " (left margin: " + $LeftPad + " chars)")
   try {
     Send-Raw $PrinterName $bytes
+    Write-Host ""
     Write-Host "OK: ticket sent. The drawer should also have opened."
+    Write-Host "Check the paper: a left margin, and 1 500 000 printed in full."
+    Set-Status "TEST_OK"
   } catch {
+    Write-Host ""
     Write-Host ("FAILED: " + $_.Exception.Message)
     Write-Host ""
     Write-Host "Printers installed on this PC:"
     foreach ($n in (Get-PrinterNames)) { Write-Host ("  " + $n) }
     Write-Host ""
-    Write-Host "Copy the exact name into start-xprinter-bridge.bat (XPRINTER_NAME)."
+    Write-Host "Copy the exact name above into start-xprinter-bridge.bat and"
+    Write-Host "test-print.bat, on the line: set XPRINTER_NAME=..."
+    Set-Status "TEST_FAILED"
   }
-  Write-Host ""
-  Write-Host "Press any key to close."
-  try { $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown") } catch { Start-Sleep -Seconds 15 }
+  Wait-AnyKey
+  exit 0
+}
+
+# Answers /health on the port: is OUR bridge already serving there?
+function Test-BridgeAlreadyRunning {
+  param([int]$ProbePort)
+  try {
+    $probe = New-Object System.Net.Sockets.TcpClient
+    $probe.Connect("127.0.0.1", $ProbePort)
+    $ps = $probe.GetStream()
+    $ps.ReadTimeout = 4000
+    $ps.WriteTimeout = 4000
+    $req = "GET /health HTTP/1.1`r`nHost: 127.0.0.1`r`nConnection: close`r`n`r`n"
+    $rb = [System.Text.Encoding]::ASCII.GetBytes($req)
+    $ps.Write($rb, 0, $rb.Length)
+    $ps.Flush()
+    $sr = New-Object System.IO.StreamReader($ps)
+    $answer = $sr.ReadToEnd()
+    $probe.Close()
+    if ($answer -eq $null) { return $false }
+    return $answer.Contains("winspool-ps")
+  } catch {
+    return $false
+  }
+}
+
+# PID holding the port, so the user can be told exactly what to close
+function Get-PortOwnerPid {
+  param([int]$ProbePort)
+  try {
+    $needle = ":" + $ProbePort
+    foreach ($line in (& netstat -ano)) {
+      $text = ([string]$line).Trim()
+      if ($text.StartsWith("TCP") -eq $false) { continue }
+      $fields = $text -split "\s+"
+      if ($fields.Length -lt 4) { continue }
+      if ($fields[1].EndsWith($needle) -eq $false) { continue }
+      $owner = $fields[$fields.Length - 1]
+      try { return [int]$owner } catch { return 0 }
+    }
+  } catch { }
+  return 0
+}
+
+if ($Stop) {
+  $owner = Get-PortOwnerPid $Port
+  if ($owner -le 0) {
+    Write-Host ("No bridge is listening on port " + $Port + ". Nothing to stop.")
+    Set-Status "STOPPED"
+    exit 0
+  }
+  Write-Host ("Stopping the bridge (process " + $owner + ")...")
+  try {
+    Stop-Process -Id $owner -Force
+    Write-Host "Stopped."
+    Set-Status "STOPPED"
+  } catch {
+    Write-Host ("Could not stop it: " + $_.Exception.Message)
+    Set-Status "ERROR"
+    exit 1
+  }
   exit 0
 }
 
@@ -361,17 +481,46 @@ $listener = New-Object System.Net.Sockets.TcpListener([System.Net.IPAddress]::Lo
 try {
   $listener.Start()
 } catch {
+  # The usual cause is the copy started automatically at logon, which runs
+  # minimized and is easy to miss. That is not an error: it is already working.
+  if (Test-BridgeAlreadyRunning $Port) {
+    Write-Host ""
+    Write-Host "THE BRIDGE IS ALREADY RUNNING - nothing to do."
+    Write-Host ""
+    Write-Host "It was most likely started automatically when you logged in."
+    Write-Host "Look for a minimized window in the taskbar."
+    Write-Host ""
+    Write-Host ("Check it here: http://127.0.0.1:" + $Port + "/health")
+    Write-Host "To restart it from scratch, run stop-bridge.bat first."
+    Write-Host ""
+    Write-Host "You can close this window and keep using the POS."
+    Set-Status "ALREADY_RUNNING"
+    Wait-AnyKey
+    exit 2
+  }
+
   Write-Host ""
   Write-Host "COULD NOT START THE BRIDGE"
-  Write-Host ("Port " + $Port + ": " + $_.Exception.Message)
+  Write-Host ("Port " + $Port + " is taken by another program.")
   Write-Host ""
-  Write-Host "The port is most likely already used by another bridge window."
-  Write-Host "Close the other black window, then start this one again."
+  $owner = Get-PortOwnerPid $Port
+  if ($owner -gt 0) {
+    $ownerName = "unknown"
+    try { $ownerName = (Get-Process -Id $owner).ProcessName } catch { }
+    Write-Host ("It is held by: " + $ownerName + " (process " + $owner + ")")
+    Write-Host "Run stop-bridge.bat to free the port, then start this again."
+  } else {
+    Write-Host "Run stop-bridge.bat to free the port, then start this again."
+  }
   Write-Host ""
-  Write-Host "Press any key to close."
-  try { $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown") } catch { Start-Sleep -Seconds 20 }
+  Write-Host ("Or use a different port: set XPRINTER_BRIDGE_PORT=17810")
+  Write-Host "in start-xprinter-bridge.bat (and in the app settings)."
+  Set-Status "PORT_BUSY"
+  Wait-AnyKey
   exit 1
 }
+
+Set-Status "RUNNING"
 
 Write-Host ""
 Write-Host "ONE SHOT printer bridge is RUNNING (no Node.js, no admin)"
@@ -392,7 +541,12 @@ try {
       $stream.ReadTimeout = 15000
       $stream.WriteTimeout = 15000
 
-      $head = Read-HttpHead $stream
+      # Browsers open spare connections and send nothing on them. That is
+      # normal, so a read failure here must not be reported as an error.
+      $head = ""
+      $gotHead = $true
+      try { $head = Read-HttpHead $stream } catch { $gotHead = $false }
+      if (-not $gotHead) { continue }
       if ($head -eq $null -or $head.Trim().Length -eq 0) { continue }
 
       $headLines = $head -split "`n"

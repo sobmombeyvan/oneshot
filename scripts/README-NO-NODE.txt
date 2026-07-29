@@ -10,11 +10,17 @@ WHAT YOU NEED
 2) Cash drawer cable (RJ11) plugged into the PRINTER (not the PC)
 3) These files copied to the PC, for example C:\ONESHOT\scripts\ :
       start-xprinter-bridge.bat
+      stop-bridge.bat
       test-print.bat
+      diagnose.bat
       install-autostart.bat
       install-bridge-autostart.ps1
+      diagnose.ps1
       xprinter-bridge.ps1
 4) Google Chrome (recommended) to open the Vercel website
+
+IMPORTANT: copy the WHOLE scripts folder. If a .ps1 file is missing, the
+.bat files close straight away.
 
 
 STEP 1 - Check the printer name
@@ -60,7 +66,7 @@ A black window opens and shows:
 
       ONE SHOT printer bridge is RUNNING (no Node.js, no admin)
       Printer     : POS-58
-      Left margin : 2 characters
+      Left margin : 1 character
       Health      : http://127.0.0.1:17809/health
 
 Leave this window OPEN (or minimized) while the POS is used.
@@ -89,7 +95,7 @@ Open Chrome on the SAME PC and go to:
 
 You must see something like:
 
-      {"ok":true,"printer":"POS-58","leftPad":2,"printers":["POS-58", ...]}
+      {"ok":true,"printer":"POS-58","leftPad":1,"printers":["POS-58", ...]}
 
 Check that your printer appears in the "printers" list.
 
@@ -119,8 +125,19 @@ Expected:
 
 TROUBLESHOOTING
 ---------------
-Every print and every error is written to:  bridge-log.txt
-(next to the scripts). Check it first.
+IF ANYTHING GOES WRONG, START HERE
+   Double-click diagnose.bat. It writes report.txt next to the scripts:
+   Windows version, PowerShell version, whether .NET can open a socket,
+   every printer name, and which program is using the port.
+   Send report.txt to the developer and the cause is found immediately.
+
+Every print and every error is also written to:  bridge-log.txt
+
+"THE BRIDGE CRASHED"
+   -> the reason is shown on screen and saved in bridge-log.txt
+
+"THE BRIDGE DID NOT START" and nothing else
+   -> PowerShell closed before the bridge was ready. Run diagnose.bat.
 
 Browser print popup appears
    -> the bridge is not running. Start start-xprinter-bridge.bat
@@ -134,7 +151,8 @@ Amounts print as 1?500?000
    -> open http://127.0.0.1:17809/health in Chrome on that PC
 
 "COULD NOT START THE BRIDGE" / port already used
-   -> a bridge window is already open. Close the other black window.
+   -> usually it means the bridge is ALREADY running (autostart). Not a bug.
+   -> run stop-bridge.bat, then start-xprinter-bridge.bat if you want to restart.
 
 "OpenPrinter failed (code 1801)"
    -> the printer name is wrong. Run test-print.bat, it lists the real names.

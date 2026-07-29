@@ -85,7 +85,10 @@ async function openViaQZTray(printerName: string): Promise<boolean> {
     await qz.websocket.connect({ retries: 2, delay: 1 });
   }
 
-  const config = qz.configs.create(printerName || undefined, { encoding: "UTF-8" });
+  const name = printerName.trim();
+  if (!name) return false;
+
+  const config = qz.configs.create(name, { encoding: "UTF-8" });
   await qz.print(config, [
     {
       type: "raw",

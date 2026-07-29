@@ -138,7 +138,9 @@ export default function SettingsPage() {
           <CardContent className="space-y-4">
             <p className="text-sm text-off-white/50">
               Le popup navigateur <strong className="text-off-white">ne peut pas</strong> ouvrir le tiroir.
-              Il faut le bridge local. Paiement Cash = impression directe + tiroir auto.
+              Sur le PC caisse (sans Node), double-cliquez{" "}
+              <code className="text-primary">scripts\start-xprinter-bridge.bat</code>.
+              Paiement Cash = impression directe + tiroir auto.
             </p>
 
             <div className={`rounded-xl border px-3 py-2 text-sm ${bridgeOk ? "border-emerald-500/40 text-emerald-400" : "border-red-500/40 text-red-400"}`}>

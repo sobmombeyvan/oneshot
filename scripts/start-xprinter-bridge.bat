@@ -10,26 +10,23 @@ if "%XPRINTER_BRIDGE_PORT%"=="" set XPRINTER_BRIDGE_PORT=17809
 if "%XPRINTER_LEFT_PAD%"=="" set XPRINTER_LEFT_PAD=2
 
 echo.
-echo ONE SHOT Printer Bridge (no Node.js needed)
-echo Printer     : %XPRINTER_NAME%
-echo Left margin : %XPRINTER_LEFT_PAD% characters
-echo Health      : http://127.0.0.1:%XPRINTER_BRIDGE_PORT%/health
-echo Keep this window OPEN while using the POS.
+echo ONE SHOT Printer Bridge - starting (no Node.js, no administrator)
 echo.
 
+:run
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0xprinter-bridge.ps1" -PrinterName "%XPRINTER_NAME%" -Port %XPRINTER_BRIDGE_PORT% -LeftPad %XPRINTER_LEFT_PAD%
 if errorlevel 1 goto failed
 
+rem The bridge should never exit on its own. If it does, restart it so the
+rem cashier is never left without a printer.
 echo.
-echo Bridge stopped.
-goto end
+echo Bridge stopped unexpectedly. Restarting in 5 seconds...
+echo Close this window to stop it for good.
+ping -n 6 127.0.0.1 >nul
+goto run
 
 :failed
 echo.
-echo The bridge could not start.
-echo Right-click this file and choose "Run as administrator" (needed once).
+echo The bridge could not start. See the message above.
+echo Details are also saved in: bridge-log.txt
 echo.
-
-:end
-echo Press any key to close.
-pause >nul

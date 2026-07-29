@@ -40,3 +40,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# printer bridge runtime log (written on the cashier PC)
+scripts/bridge-log.txt

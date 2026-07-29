@@ -1,7 +1,8 @@
 ONE SHOT - Cashier PC setup (Windows 7 / 8 / 10 / 11)
 =====================================================
 
-NO Node.js needed. Windows + PowerShell only.
+NO Node.js needed. NO administrator needed. Windows + PowerShell only.
+
 
 WHAT YOU NEED
 -------------
@@ -10,8 +11,9 @@ WHAT YOU NEED
 3) These files copied to the PC, for example C:\ONESHOT\scripts\ :
       start-xprinter-bridge.bat
       test-print.bat
-      xprinter-bridge.ps1
+      install-autostart.bat
       install-bridge-autostart.ps1
+      xprinter-bridge.ps1
 4) Google Chrome (recommended) to open the Vercel website
 
 
@@ -22,60 +24,60 @@ Windows 10: Settings > Printers and scanners
 
 The name must be exactly:  POS-58
 
-If it is different (example XP-58C), remember the exact name.
-You will type it in the app later (Parametres > Nom exact imprimante).
+If it is different (example XP-58C), open start-xprinter-bridge.bat and
+test-print.bat with Notepad and change this line in BOTH files:
+
+      set XPRINTER_NAME=POS-58
 
 
-STEP 2 - Install the bridge (ONE TIME, as administrator)
---------------------------------------------------------
-On Windows 7 this step is required, otherwise the bridge
-cannot open its port.
+STEP 2 - Test the printer
+-------------------------
+Double-click:   test-print.bat
 
-1) Click Start, type: powershell
-2) Right-click "Windows PowerShell" > Run as administrator
-3) Type these two lines:
+It prints ONE sample ticket and opens the cash drawer.
 
-      cd C:\ONESHOT\scripts
-      powershell -ExecutionPolicy Bypass -File .\install-bridge-autostart.ps1
+If it fails, it lists every printer name installed on the PC.
+Copy the exact name into the two .bat files (see STEP 1) and try again.
 
-This does 3 things:
-   - reserves the local port for the bridge
-   - allows it in the firewall
-   - starts the bridge automatically at every Windows logon
+Check the margins on the printed ticket: the text must NOT touch the
+left edge of the paper. To change the margin, edit this line in BOTH
+start-xprinter-bridge.bat and test-print.bat:
+
+      set XPRINTER_LEFT_PAD=2
+
+0 = no margin, 2 = default, up to 8. Run test-print.bat after each change.
 
 
-STEP 3 - Start the bridge now
------------------------------
+STEP 3 - Start the bridge
+-------------------------
 Double-click:   start-xprinter-bridge.bat
 
 A black window opens and shows:
 
-      ONE SHOT printer bridge is RUNNING (no Node.js)
-      Printer : POS-58
+      ONE SHOT printer bridge is RUNNING (no Node.js, no admin)
+      Printer     : POS-58
+      Left margin : 2 characters
+      Health      : http://127.0.0.1:17809/health
 
-Leave this window OPEN while the POS is used.
+Leave this window OPEN (or minimized) while the POS is used.
 
-If the port is not open yet, Windows shows a UAC prompt: click Yes.
-That happens only the first time.
-
-
-STEP 3b - Check the margins (recommended)
------------------------------------------
-Double-click:   test-print.bat
-
-It prints one sample ticket and opens the drawer.
-The text must NOT touch the left edge of the paper.
-
-Margin too small or too big? Open start-xprinter-bridge.bat and
-test-print.bat with Notepad and change this line in BOTH files:
-
-      set XPRINTER_LEFT_PAD=2
-
-Use 0 for no margin, 1, 2, 3 ... up to 8 (2 is the default).
-Then run test-print.bat again.
+No UAC prompt, no "run as administrator", no netsh command is needed.
+The bridge listens on 127.0.0.1 only, so it is not reachable from
+outside the PC.
 
 
-STEP 4 - Verify
+STEP 4 - Start it automatically at every logon
+----------------------------------------------
+Double-click:   install-autostart.bat
+
+This puts a small launcher in the Windows Startup folder. After every
+reboot the bridge starts by itself, minimized in the taskbar.
+
+To disable it later, delete this file:
+      %APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\ONE-SHOT-Printer-Bridge.vbs
+
+
+STEP 5 - Verify
 ---------------
 Open Chrome on the SAME PC and go to:
 
@@ -83,13 +85,12 @@ Open Chrome on the SAME PC and go to:
 
 You must see something like:
 
-      {"ok":true,"printer":"POS-58","printers":["POS-58", ...]}
+      {"ok":true,"printer":"POS-58","leftPad":2,"printers":["POS-58", ...]}
 
 Check that your printer appears in the "printers" list.
-If the name there is different from POS-58, use that exact name in the app.
 
 
-STEP 5 - Configure the app
+STEP 6 - Configure the app
 --------------------------
 1) Open your Vercel POS website in Chrome on this same PC
 2) Press Ctrl+F5 to refresh
@@ -102,44 +103,43 @@ STEP 5 - Configure the app
 6) Click "Tester le tiroir"  -> the drawer must open
 
 
-STEP 6 - Real test
+STEP 7 - Real test
 ------------------
 POS > add products > pay with Cash > confirm
 
 Expected:
    - the ticket prints immediately, with NO browser print popup
-   - the text is big and readable
+   - the text is big, readable, and has a left margin
    - the cash drawer opens
-
-
-AFTER A REBOOT
---------------
-The bridge starts by itself (thanks to STEP 2).
-Just open the POS website and work.
 
 
 TROUBLESHOOTING
 ---------------
+Every print and every error is written to:  bridge-log.txt
+(next to the scripts). Check it first.
+
 Browser print popup appears
    -> the bridge is not running. Start start-xprinter-bridge.bat
 
 "Bridge OFFLINE" in Parametres
-   -> open http://127.0.0.1:17809/health to see the real error
+   -> open http://127.0.0.1:17809/health in Chrome on that PC
+
+"COULD NOT START THE BRIDGE" / port already used
+   -> a bridge window is already open. Close the other black window.
 
 "OpenPrinter failed (code 1801)"
-   -> the printer name is wrong. Use the exact name from /health
-   -> test-print.bat also lists every printer name of the PC
+   -> the printer name is wrong. Run test-print.bat, it lists the real names.
 
 Text touches the paper edge (no margin)
-   -> raise XPRINTER_LEFT_PAD in start-xprinter-bridge.bat (see STEP 3b)
+   -> raise XPRINTER_LEFT_PAD (see STEP 2)
 
-Lines are cut on the right / wrap to the next line
+Lines are cut on the right, or wrap to the next line
    -> in Parametres, check "Largeur papier" matches your printer
       (58 mm for POS-58, 80 mm for a wide printer)
 
 Ticket prints but drawer stays closed
    -> check the RJ11 cable goes into the PRINTER, not the PC
-   -> tell the developer: the drawer may need a different pin pulse
+   -> some drawers need a different pin: tell the developer
 
 Nothing prints at all
    -> print a Windows test page first (Printer properties > Print test page)

@@ -15,5 +15,9 @@ echo.
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0xprinter-bridge.ps1" -PrinterName "%XPRINTER_NAME%" -Port %XPRINTER_BRIDGE_PORT%
 
 echo.
-echo Bridge stopped. Press any key to close.
+echo Bridge stopped.
+echo If it failed to open the port, right-click this file and choose
+echo "Run as administrator" (required once on Windows 7).
+echo.
+echo Press any key to close.
 pause >nul

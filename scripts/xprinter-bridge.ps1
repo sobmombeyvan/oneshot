@@ -187,22 +187,79 @@ function Escape-Json {
   return $out
 }
 
+function Add-CorsHeaders {
+  param($Response)
+  $Response.Headers["Access-Control-Allow-Origin"] = "*"
+  $Response.Headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+  $Response.Headers["Access-Control-Allow-Headers"] = "Content-Type"
+  # Chrome Private Network Access (HTTPS page -> 127.0.0.1)
+  $Response.Headers["Access-Control-Allow-Private-Network"] = "true"
+  $Response.Headers["Access-Control-Max-Age"] = "86400"
+}
+
 function Send-Json {
   param($Context, [int]$Status, [string]$Json)
   $bytes = [System.Text.Encoding]::UTF8.GetBytes($Json)
   $Context.Response.StatusCode = $Status
   $Context.Response.ContentType = "application/json"
-  $Context.Response.Headers["Access-Control-Allow-Origin"] = "*"
-  $Context.Response.Headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-  $Context.Response.Headers["Access-Control-Allow-Headers"] = "Content-Type"
+  Add-CorsHeaders $Context.Response
   $Context.Response.OutputStream.Write($bytes, 0, $bytes.Length)
   $Context.Response.Close()
+}
+
+function Send-NoContent {
+  param($Context)
+  $Context.Response.StatusCode = 200
+  Add-CorsHeaders $Context.Response
+  $Context.Response.ContentLength64 = 0
+  $Context.Response.Close()
+}
+
+function Test-IsAdmin {
+  try {
+    $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = New-Object System.Security.Principal.WindowsPrincipal($id)
+    return $principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+  } catch {
+    return $false
+  }
 }
 
 $listener = New-Object System.Net.HttpListener
 $prefix = "http://127.0.0.1:" + $Port + "/"
 $listener.Prefixes.Add($prefix)
-$listener.Start()
+
+try {
+  $listener.Start()
+} catch {
+  Write-Host ""
+  Write-Host "ERROR: cannot open port $Port"
+  Write-Host $_.Exception.Message
+  Write-Host ""
+
+  if (Test-IsAdmin) {
+    Write-Host "Reserving URL for all users, then retrying..."
+    $cmd = "http add urlacl url=" + $prefix + " user=Everyone"
+    Start-Process -FilePath "netsh" -ArgumentList $cmd -Wait -WindowStyle Hidden
+    try {
+      $listener.Start()
+      Write-Host "OK: URL reserved, bridge started."
+    } catch {
+      Write-Host "Still failing. Another program may already use port $Port."
+      Write-Host "Press any key to close."
+      $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+      exit 1
+    }
+  } else {
+    Write-Host "FIX (Windows 7): right-click start-xprinter-bridge.bat > Run as administrator"
+    Write-Host "Or run this once in an admin prompt:"
+    Write-Host ("  netsh http add urlacl url=" + $prefix + " user=Everyone")
+    Write-Host ""
+    Write-Host "Press any key to close."
+    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+    exit 1
+  }
+}
 
 Write-Host ""
 Write-Host "ONE SHOT printer bridge is RUNNING (no Node.js)"
@@ -219,7 +276,7 @@ while ($listener.IsListening) {
 
   try {
     if ($request.HttpMethod -eq "OPTIONS") {
-      Send-Json $context 204 "{}"
+      Send-NoContent $context
       continue
     }
 

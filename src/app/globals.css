@@ -76,7 +76,7 @@ body {
 @custom-variant square (@media (max-aspect-ratio: 5/4));
 @custom-variant short (@media (max-height: 820px));
 
-/* 80mm thermal receipt — height follows content only (no empty bottom) */
+/* 80mm thermal receipt — larger readable text */
 .receipt-80mm {
   box-sizing: border-box;
   width: 72mm;
@@ -84,77 +84,75 @@ body {
   height: fit-content;
   min-height: 0;
   margin: 0;
-  padding: 1.5mm 1.5mm 2mm;
+  padding: 2mm 2mm 2.5mm;
   background: #fff;
   color: #000;
   font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Menlo, monospace;
-  font-size: 10px;
-  line-height: 1.2;
+  font-size: 14px;
+  line-height: 1.25;
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
 }
 
 .receipt-80mm .receipt-header {
   text-align: center;
-  margin-bottom: 1.5mm;
+  margin-bottom: 2mm;
 }
 
 .receipt-80mm .receipt-brand {
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 20px;
+  font-weight: 800;
   letter-spacing: 0.06em;
   margin: 0;
   text-transform: uppercase;
 }
 
 .receipt-80mm .receipt-sub {
-  font-size: 8px;
-  margin: 0.4mm 0 0;
+  font-size: 11px;
+  margin: 0.6mm 0 0;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  opacity: 0.85;
 }
 
 .receipt-80mm .receipt-title {
   display: inline-block;
-  font-size: 10px;
-  font-weight: 700;
-  margin: 1.5mm 0 0;
-  padding: 0.6mm 2mm;
-  border: 1px solid #000;
+  font-size: 13px;
+  font-weight: 800;
+  margin: 2mm 0 0;
+  padding: 1mm 2.5mm;
+  border: 1.5px solid #000;
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
 
 .receipt-80mm .receipt-meta {
-  margin-top: 1mm;
+  margin-top: 1.5mm;
 }
 
 .receipt-80mm .receipt-strong {
-  font-weight: 700;
+  font-weight: 800;
 }
 
 .receipt-80mm .receipt-rule {
   border: none;
-  border-top: 1px dashed #000;
-  margin: 1.2mm 0;
+  border-top: 1.5px dashed #000;
+  margin: 1.8mm 0;
 }
 
 .receipt-80mm .receipt-rule.thin {
-  margin: 0.6mm 0;
+  margin: 1mm 0;
   border-top-style: solid;
-  border-top-width: 0.4px;
+  border-top-width: 1px;
 }
 
 .receipt-80mm .receipt-cols {
   display: grid;
   grid-template-columns: 1fr auto auto;
   gap: 2mm;
-  font-size: 8px;
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  opacity: 0.75;
 }
 
 .receipt-80mm .receipt-row {
@@ -162,37 +160,37 @@ body {
   justify-content: space-between;
   gap: 2mm;
   align-items: flex-start;
-  padding: 0.25mm 0;
-  font-size: 9px;
+  padding: 0.5mm 0;
+  font-size: 13px;
 }
 
 .receipt-80mm .receipt-item {
-  padding: 0.6mm 0;
+  padding: 1mm 0;
 }
 
 .receipt-80mm .receipt-item-name {
-  font-size: 10px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 700;
   word-break: break-word;
-  line-height: 1.15;
+  line-height: 1.2;
 }
 
 .receipt-80mm .receipt-item-line {
   display: flex;
   justify-content: space-between;
   gap: 2mm;
-  margin-top: 0.3mm;
-  font-size: 9px;
+  margin-top: 0.5mm;
+  font-size: 13px;
 }
 
 .receipt-80mm .receipt-qty {
-  opacity: 0.75;
+  opacity: 0.8;
 }
 
 .receipt-80mm .receipt-item-price {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .receipt-80mm .receipt-totals {
@@ -200,33 +198,33 @@ body {
 }
 
 .receipt-80mm .receipt-total-block {
-  margin-top: 1mm;
-  padding-top: 1mm;
-  border-top: 1.5px solid #000;
+  margin-top: 1.5mm;
+  padding-top: 1.5mm;
+  border-top: 2px solid #000;
 }
 
 .receipt-80mm .receipt-total {
-  font-size: 12px;
-  font-weight: 700;
-  padding: 0.4mm 0 0;
+  font-size: 18px;
+  font-weight: 800;
+  padding: 0.6mm 0 0;
 }
 
 .receipt-80mm .receipt-pay {
-  margin-top: 1mm;
-  font-size: 9px;
+  margin-top: 1.5mm;
+  font-size: 13px;
 }
 
 .receipt-80mm .receipt-notes {
-  margin: 1mm 0 0;
-  font-size: 8px;
+  margin: 1.5mm 0 0;
+  font-size: 12px;
   word-break: break-word;
 }
 
 .receipt-80mm .receipt-thanks {
   text-align: center;
-  margin: 1.2mm 0 0;
-  font-size: 9px;
-  font-weight: 600;
+  margin: 2mm 0 0;
+  font-size: 13px;
+  font-weight: 700;
 }
 
 @page {

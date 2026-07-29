@@ -219,20 +219,18 @@ function POSPageInner() {
       queryClient.invalidateQueries({ queryKey: ["restaurant-tables"] });
       queryClient.invalidateQueries({ queryKey: ["all-orders"] });
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
-      if (shouldOpenCashDrawer(selectedPayment)) {
-        void printReceipt(receiptData).then((printResult) => {
-          // Drawer already kicked inside bridge print for cash; only backup if browser fallback
-          if (printResult.via === "browser" || !printResult.drawer) {
-            void openCashDrawer().then((result) => {
-              if (!result.ok && result.error !== "disabled") {
-                toast.warning("Tiroir non ouvert — demarrez le bridge XPrinter sur ce PC.");
-              }
-            });
+      void printReceipt(receiptData).then((printResult) => {
+        if (printResult.via === "bridge") {
+          if (shouldOpenCashDrawer(selectedPayment)) {
+            toast.success("Ticket imprime + tiroir ouvert");
           }
-        });
-      } else {
-        void printReceipt(receiptData);
-      }
+          return;
+        }
+        if (shouldOpenCashDrawer(selectedPayment)) {
+          toast.warning("Impression navigateur: le tiroir ne peut pas s'ouvrir. Lancez start-xprinter-bridge.bat");
+          void openCashDrawer();
+        }
+      });
     },
     onError: (err: Error) => toast.error(err.message),
   });

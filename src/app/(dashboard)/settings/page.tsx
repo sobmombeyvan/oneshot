@@ -12,7 +12,7 @@ import {
   getCashDrawerSettings,
   saveCashDrawerSettings,
   openCashDrawer,
-  connectUsbCashDrawer,
+  checkPrinterBridge,
   type CashDrawerSettings,
 } from "@/lib/printer/cash-drawer";
 
@@ -39,6 +39,8 @@ const DEFAULTS: AppSettings = {
 export default function SettingsPage() {
   const [form, setForm] = useState<AppSettings>(DEFAULTS);
   const [printer, setPrinter] = useState<CashDrawerSettings>(() => getCashDrawerSettings());
+  const [bridgeOk, setBridgeOk] = useState<boolean | null>(null);
+  const [printers, setPrinters] = useState<string[]>([]);
 
   useEffect(() => {
     try {
@@ -48,7 +50,20 @@ export default function SettingsPage() {
       /* ignore */
     }
     setPrinter(getCashDrawerSettings());
+    void refreshBridge();
   }, []);
+
+  const refreshBridge = async () => {
+    const status = await checkPrinterBridge();
+    setBridgeOk(status.ok);
+    setPrinters(status.printers ?? []);
+    if (status.ok && !printer.windowsPrinterName) {
+      const guess =
+        status.printers?.find((p) => /xprint|xp-|thermal|pos/i.test(p)) ??
+        status.printers?.find((p) => !/onenote|pdf|fax|xps|sage/i.test(p));
+      if (guess) setPrinter((prev) => ({ ...prev, windowsPrinterName: guess }));
+    }
+  };
 
   const save = () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(form));
@@ -58,21 +73,14 @@ export default function SettingsPage() {
 
   const testDrawer = async () => {
     saveCashDrawerSettings(printer);
+    const health = await checkPrinterBridge();
+    if (!health.ok) {
+      toast.error("Bridge offline. Lancez scripts\\start-xprinter-bridge.bat sur ce PC.");
+      return;
+    }
     const result = await openCashDrawer();
-    if (result.ok) {
-      toast.success(`Tiroir ouvert (${result.method})`);
-    } else {
-      toast.error(result.error ?? "Échec ouverture tiroir");
-    }
-  };
-
-  const pairUsb = async () => {
-    const ok = await connectUsbCashDrawer();
-    if (ok) {
-      toast.success("USB XPrinter autorise. Le tiroir pourra s'ouvrir automatiquement.");
-    } else {
-      toast.error("Autorisation USB annulee ou indisponible.");
-    }
+    if (result.ok) toast.success(`Tiroir ouvert (${result.method})`);
+    else toast.error(result.error ?? "Échec ouverture tiroir");
   };
 
   return (
@@ -120,14 +128,17 @@ export default function SettingsPage() {
         </Card>
 
         <Card>
-          <CardHeader><CardTitle>XPrinter — tiroir caisse</CardTitle></CardHeader>
+          <CardHeader><CardTitle>XPrinter USB — impression + tiroir</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-off-white/50">
-              Paiement <strong className="text-off-white">Cash</strong> = impression XPrinter + ouverture automatique du tiroir.
-              Sur le PC caisse, le bridge doit tourner en permanence (
-              <code className="text-primary">scripts\install-bridge-autostart.ps1</code>
-              ).
+              Le popup navigateur <strong className="text-off-white">ne peut pas</strong> ouvrir le tiroir.
+              Il faut le bridge local. Paiement Cash = impression directe + tiroir auto.
             </p>
+
+            <div className={`rounded-xl border px-3 py-2 text-sm ${bridgeOk ? "border-emerald-500/40 text-emerald-400" : "border-red-500/40 text-red-400"}`}>
+              Bridge: {bridgeOk === null ? "…" : bridgeOk ? "EN LIGNE" : "OFFLINE — lancez start-xprinter-bridge.bat"}
+            </div>
+
             <div className="flex items-center gap-3">
               <input
                 id="drawer-enabled"
@@ -138,16 +149,7 @@ export default function SettingsPage() {
               />
               <Label htmlFor="drawer-enabled">Ouvrir le tiroir sur paiement cash</Label>
             </div>
-            <div className="flex items-center gap-3">
-              <input
-                id="drawer-usb"
-                type="checkbox"
-                checked={printer.usbDirect}
-                onChange={(e) => setPrinter({ ...printer, usbDirect: e.target.checked })}
-                className="h-4 w-4 rounded border-smoked-brown/40"
-              />
-              <Label htmlFor="drawer-usb">Essayer USB direct (POS)</Label>
-            </div>
+
             <div className="space-y-2">
               <Label>URL bridge local</Label>
               <Input
@@ -156,17 +158,33 @@ export default function SettingsPage() {
                 placeholder="http://127.0.0.1:17809"
               />
             </div>
+
             <div className="space-y-2">
-              <Label>Nom imprimante QZ Tray (optionnel)</Label>
+              <Label>Nom exact imprimante Windows (USB)</Label>
               <Input
-                value={printer.qzPrinterName}
-                onChange={(e) => setPrinter({ ...printer, qzPrinterName: e.target.value })}
-                placeholder="Xprinter XP-80"
+                value={printer.windowsPrinterName}
+                onChange={(e) => setPrinter({ ...printer, windowsPrinterName: e.target.value })}
+                placeholder="Ex: XP-80C / Xprinter XP-80"
               />
+              {printers.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {printers.map((name) => (
+                    <button
+                      key={name}
+                      type="button"
+                      onClick={() => setPrinter({ ...printer, windowsPrinterName: name })}
+                      className="rounded-lg border border-smoked-brown/40 px-2 py-1 text-[11px] text-off-white/70 hover:border-primary/50"
+                    >
+                      {name}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
+
             <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="outline" onClick={pairUsb}>
-                Autoriser USB XPrinter
+              <Button type="button" variant="outline" onClick={() => void refreshBridge()}>
+                Verifier bridge
               </Button>
               <Button type="button" variant="outline" onClick={testDrawer}>
                 Tester le tiroir

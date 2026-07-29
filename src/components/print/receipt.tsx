@@ -209,19 +209,26 @@ async function printViaBridge(data: ReceiptData): Promise<boolean> {
   if (!settings.bridgeUrl) return false;
   const base = settings.bridgeUrl.replace(/\/$/, "");
   const openDrawer =
-    settings.enabled &&
+    settings.enabled !== false &&
     (data.paymentMethod === "cash" || data.paymentMethod === "Cash");
   const response = await fetch(`${base}/print-receipt`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ lines: toReceiptLines(data), openDrawer }),
+    body: JSON.stringify({
+      lines: toReceiptLines(data),
+      openDrawer,
+      printerName: settings.windowsPrinterName || undefined,
+    }),
   });
-  if (!response.ok) return false;
+  if (!response.ok) {
+    const err = await response.text().catch(() => "");
+    throw new Error(err || `Bridge HTTP ${response.status}`);
+  }
   const json = (await response.json().catch(() => ({ ok: false }))) as BridgePrintResponse;
   return !!json.ok;
 }
 
-export async function printReceipt(data?: ReceiptData): Promise<{ ok: boolean; via: "bridge" | "browser"; drawer?: boolean }> {
+export async function printReceipt(data?: ReceiptData): Promise<{ ok: boolean; via: "bridge" | "browser"; drawer?: boolean; error?: string }> {
   if (data) {
     try {
       const settings = getCashDrawerSettings();
@@ -230,8 +237,9 @@ export async function printReceipt(data?: ReceiptData): Promise<{ ok: boolean; v
         (data.paymentMethod === "cash" || data.paymentMethod === "Cash");
       const ok = await printViaBridge(data);
       if (ok) return { ok: true, via: "bridge", drawer: openDrawer };
-    } catch {
-      // fallback to browser dialog
+    } catch (err) {
+      // fall through to browser print
+      console.warn("[print] Bridge failed, falling back to browser:", err);
     }
   }
 
@@ -247,5 +255,10 @@ export async function printReceipt(data?: ReceiptData): Promise<{ ok: boolean; v
       setTimeout(cleanup, 2000);
     }, 50);
   });
-  return { ok: true, via: "browser", drawer: false };
+  return {
+    ok: true,
+    via: "browser",
+    drawer: false,
+    error: data ? "Bridge offline — tiroir impossible via navigateur" : undefined,
+  };
 }

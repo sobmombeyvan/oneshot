@@ -1,15 +1,11 @@
 @echo off
 cd /d "%~dp0.."
 
-REM USB XPrinter (Windows printer name as shown in Settings > Printers)
-if "%XPRINTER_MODE%"=="" set XPRINTER_MODE=share
-if "%XPRINTER_SHARE%"=="" set XPRINTER_SHARE=Xprinter
-
-REM Optional LAN mode:
-REM set XPRINTER_MODE=tcp
-REM set XPRINTER_HOST=192.168.1.50
-REM set XPRINTER_PORT=9100
+REM USB XPrinter via Windows printer name (Settings > Printers)
+if "%XPRINTER_MODE%"=="" set XPRINTER_MODE=winspool
+if "%XPRINTER_NAME%"=="" set XPRINTER_NAME=Xprinter
 
 echo Starting ONE SHOT XPrinter bridge...
-echo Mode=%XPRINTER_MODE% Share=%XPRINTER_SHARE%
+echo Mode=%XPRINTER_MODE% Printer=%XPRINTER_NAME%
+echo Open http://127.0.0.1:17809/health to verify
 npm run printer:bridge

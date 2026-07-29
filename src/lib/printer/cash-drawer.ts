@@ -8,7 +8,9 @@ export interface CashDrawerSettings {
   enabled: boolean;
   /** Local bridge URL, e.g. http://127.0.0.1:17809 */
   bridgeUrl: string;
-  /** QZ Tray printer name (optional, if QZ Tray is installed) */
+  /** Exact Windows printer name (Settings > Printers) */
+  windowsPrinterName: string;
+  /** QZ Tray printer name (optional) */
   qzPrinterName: string;
   /** Try direct USB serial first when available */
   usbDirect: boolean;
@@ -22,11 +24,12 @@ const DEFAULT_SETTINGS: CashDrawerSettings = {
     typeof process !== "undefined"
       ? process.env.NEXT_PUBLIC_XPRINTER_BRIDGE_URL ?? "http://127.0.0.1:17809"
       : "http://127.0.0.1:17809",
-  qzPrinterName:
+  windowsPrinterName:
     typeof process !== "undefined"
       ? process.env.NEXT_PUBLIC_XPRINTER_NAME ?? ""
       : "",
-  usbDirect: true,
+  qzPrinterName: "",
+  usbDirect: false,
 };
 
 export function getCashDrawerSettings(): CashDrawerSettings {
@@ -61,14 +64,12 @@ declare global {
   }
 }
 
-const CASH_DRAWER_BYTES = new Uint8Array([0x1b, 0x70, 0x00, 0x19, 0xfa]);
-
-async function openViaBridge(bridgeUrl: string): Promise<boolean> {
+async function openViaBridge(bridgeUrl: string, printerName?: string): Promise<boolean> {
   const base = bridgeUrl.replace(/\/$/, "");
   const res = await fetch(`${base}/open-drawer`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ command: "escpos" }),
+    body: JSON.stringify({ printerName: printerName || undefined }),
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
@@ -99,89 +100,43 @@ async function openViaQZTray(printerName: string): Promise<boolean> {
   return true;
 }
 
-async function pairWebSerialPort(): Promise<boolean> {
-  if (typeof navigator === "undefined" || !("serial" in navigator)) return false;
+export async function checkPrinterBridge(): Promise<{
+  ok: boolean;
+  printers?: string[];
+  printer?: string;
+  error?: string;
+}> {
+  const settings = getCashDrawerSettings();
+  if (!settings.bridgeUrl) return { ok: false, error: "no-bridge-url" };
   try {
-    const serialNavigator = navigator as Navigator & {
-      serial: { requestPort: () => Promise<unknown> };
-    };
-    await serialNavigator.serial.requestPort();
-    return true;
+    const res = await fetch(`${settings.bridgeUrl.replace(/\/$/, "")}/health`, {
+      method: "GET",
+      cache: "no-store",
+    });
+    if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
+    const json = (await res.json()) as { ok?: boolean; printers?: string[]; printer?: string };
+    return { ok: !!json.ok, printers: json.printers, printer: json.printer };
   } catch {
-    return false;
+    return { ok: false, error: "Bridge offline — lancez scripts\\start-xprinter-bridge.bat" };
   }
 }
 
-async function openViaWebSerial(): Promise<boolean> {
-  if (typeof navigator === "undefined" || !("serial" in navigator)) return false;
-
-  const serialNavigator = navigator as Navigator & {
-    serial: { getPorts: () => Promise<unknown[]> };
-  };
-  const ports = await serialNavigator.serial.getPorts();
-  if (!ports.length) return false;
-
-  for (const port of ports) {
-    const serialPort = port as {
-      open: (opts: { baudRate: number; dataBits?: number; stopBits?: number; parity?: "none" | "even" | "odd" }) => Promise<void>;
-      writable: WritableStream<Uint8Array> | null;
-      close: () => Promise<void>;
-    };
-    try {
-      await serialPort.open({ baudRate: 9600, dataBits: 8, stopBits: 1, parity: "none" });
-      const writer = serialPort.writable?.getWriter();
-      if (writer) {
-        await writer.write(CASH_DRAWER_BYTES);
-        writer.releaseLock();
-      }
-      await serialPort.close();
-      return true;
-    } catch (err) {
-      try {
-        await serialPort.close();
-      } catch {
-        /* ignore */
-      }
-      console.warn("[cash-drawer] WebSerial port failed:", err);
-    }
-  }
-  return false;
-}
-
-export async function connectUsbCashDrawer(): Promise<boolean> {
-  return pairWebSerialPort();
-}
-
-/** Open cash drawer when payment is cash. Prefer local bridge (USB/share). */
+/** Open cash drawer when payment is cash. Prefer local bridge (USB). */
 export async function openCashDrawer(): Promise<{ ok: boolean; method?: string; error?: string }> {
   const settings = getCashDrawerSettings();
-  // Always force enabled for POS cash — drawer must open automatically
-  const enabled = settings.enabled !== false;
-  if (!enabled) {
+  if (settings.enabled === false) {
     return { ok: false, error: "disabled" };
   }
 
-  // 1) Local XPrinter bridge (USB share / TCP) — most reliable for POS
   if (settings.bridgeUrl) {
     try {
-      await openViaBridge(settings.bridgeUrl);
+      await openViaBridge(settings.bridgeUrl, settings.windowsPrinterName);
       return { ok: true, method: "bridge" };
     } catch (err) {
       console.warn("[cash-drawer] Bridge failed:", err);
     }
   }
 
-  // 2) Direct USB serial (if user authorized a COM port)
-  if (settings.usbDirect) {
-    try {
-      const ok = await openViaWebSerial();
-      if (ok) return { ok: true, method: "usb-serial" };
-    } catch (err) {
-      console.warn("[cash-drawer] USB serial failed:", err);
-    }
-  }
-
-  // 3) QZ Tray
   if (settings.qzPrinterName && typeof window !== "undefined" && window.qz) {
     try {
       await openViaQZTray(settings.qzPrinterName);
@@ -193,7 +148,7 @@ export async function openCashDrawer(): Promise<{ ok: boolean; method?: string; 
 
   return {
     ok: false,
-    error: "Bridge XPrinter non demarre. Sur le PC caisse: npm run printer:bridge",
+    error: "Bridge XPrinter non demarre. Sur le PC caisse: scripts\\start-xprinter-bridge.bat",
   };
 }
 

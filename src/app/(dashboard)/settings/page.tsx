@@ -123,8 +123,10 @@ export default function SettingsPage() {
           <CardHeader><CardTitle>XPrinter — tiroir caisse</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-off-white/50">
-              Le tiroir s&apos;ouvre automatiquement au POS quand le paiement est <strong className="text-off-white">Cash</strong>.
-              L&apos;impression des tickets se fait directement sur XPrinter via le bridge local. En USB: cliquez d&apos;abord sur <strong className="text-off-white">Autoriser USB XPrinter</strong>, puis lancez <code className="text-primary">npm run printer:bridge</code> sur le PC caisse.
+              Paiement <strong className="text-off-white">Cash</strong> = impression XPrinter + ouverture automatique du tiroir.
+              Sur le PC caisse, le bridge doit tourner en permanence (
+              <code className="text-primary">scripts\install-bridge-autostart.ps1</code>
+              ).
             </p>
             <div className="flex items-center gap-3">
               <input

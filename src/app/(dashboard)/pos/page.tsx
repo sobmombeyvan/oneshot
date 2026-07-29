@@ -220,13 +220,19 @@ function POSPageInner() {
       queryClient.invalidateQueries({ queryKey: ["all-orders"] });
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
       if (shouldOpenCashDrawer(selectedPayment)) {
-        void openCashDrawer().then((result) => {
-          if (!result.ok && result.error !== "disabled") {
-            toast.warning("Tiroir non ouvert — allez dans Parametres > XPrinter: Autoriser USB, puis retestez.");
+        void printReceipt(receiptData).then((printResult) => {
+          // Drawer already kicked inside bridge print for cash; only backup if browser fallback
+          if (printResult.via === "browser" || !printResult.drawer) {
+            void openCashDrawer().then((result) => {
+              if (!result.ok && result.error !== "disabled") {
+                toast.warning("Tiroir non ouvert — demarrez le bridge XPrinter sur ce PC.");
+              }
+            });
           }
         });
+      } else {
+        void printReceipt(receiptData);
       }
-      void printReceipt(receiptData);
     },
     onError: (err: Error) => toast.error(err.message),
   });

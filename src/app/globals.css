@@ -76,63 +76,85 @@ body {
 @custom-variant square (@media (max-aspect-ratio: 5/4));
 @custom-variant short (@media (max-height: 820px));
 
-/* 80mm thermal receipt — screen preview hidden; print uses exact width */
+/* 80mm thermal receipt — height follows content only (no empty bottom) */
 .receipt-80mm {
   box-sizing: border-box;
   width: 72mm;
   max-width: 72mm;
-  margin: 0 auto;
-  padding: 2mm 1.5mm;
+  height: fit-content;
+  min-height: 0;
+  margin: 0;
+  padding: 1.5mm 1.5mm 2mm;
   background: #fff;
   color: #000;
   font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Menlo, monospace;
-  font-size: 11px;
-  line-height: 1.25;
+  font-size: 10px;
+  line-height: 1.2;
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
 }
 
 .receipt-80mm .receipt-header {
   text-align: center;
-  margin-bottom: 2mm;
+  margin-bottom: 1.5mm;
 }
 
 .receipt-80mm .receipt-brand {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   margin: 0;
   text-transform: uppercase;
 }
 
 .receipt-80mm .receipt-sub {
-  font-size: 9px;
-  margin: 0.5mm 0 0;
+  font-size: 8px;
+  margin: 0.4mm 0 0;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  opacity: 0.85;
+}
+
+.receipt-80mm .receipt-title {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  margin: 1.5mm 0 0;
+  padding: 0.6mm 2mm;
+  border: 1px solid #000;
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
 
-.receipt-80mm .receipt-title {
-  font-size: 10px;
-  font-weight: 700;
-  margin: 1.5mm 0 0;
-  text-transform: uppercase;
-}
-
-.receipt-80mm .receipt-header p {
-  margin: 0.4mm 0 0;
-  font-size: 10px;
+.receipt-80mm .receipt-meta {
+  margin-top: 1mm;
 }
 
 .receipt-80mm .receipt-strong {
   font-weight: 700;
-  font-size: 12px !important;
 }
 
 .receipt-80mm .receipt-rule {
   border: none;
   border-top: 1px dashed #000;
-  margin: 1.5mm 0;
+  margin: 1.2mm 0;
+}
+
+.receipt-80mm .receipt-rule.thin {
+  margin: 0.6mm 0;
+  border-top-style: solid;
+  border-top-width: 0.4px;
+}
+
+.receipt-80mm .receipt-cols {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 2mm;
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.75;
 }
 
 .receipt-80mm .receipt-row {
@@ -140,47 +162,71 @@ body {
   justify-content: space-between;
   gap: 2mm;
   align-items: flex-start;
-  padding: 0.3mm 0;
-  font-size: 10px;
+  padding: 0.25mm 0;
+  font-size: 9px;
+}
+
+.receipt-80mm .receipt-item {
+  padding: 0.6mm 0;
 }
 
 .receipt-80mm .receipt-item-name {
-  flex: 1;
+  font-size: 10px;
+  font-weight: 600;
   word-break: break-word;
+  line-height: 1.15;
+}
+
+.receipt-80mm .receipt-item-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 2mm;
+  margin-top: 0.3mm;
+  font-size: 9px;
+}
+
+.receipt-80mm .receipt-qty {
+  opacity: 0.75;
 }
 
 .receipt-80mm .receipt-item-price {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
+  font-weight: 600;
 }
 
 .receipt-80mm .receipt-totals {
-  margin-top: 0.5mm;
+  margin: 0;
+}
+
+.receipt-80mm .receipt-total-block {
+  margin-top: 1mm;
+  padding-top: 1mm;
+  border-top: 1.5px solid #000;
 }
 
 .receipt-80mm .receipt-total {
   font-size: 12px;
   font-weight: 700;
-  padding-top: 1mm;
-  margin-top: 1mm;
-  border-top: 1px solid #000;
+  padding: 0.4mm 0 0;
 }
 
-.receipt-80mm .receipt-center {
-  text-align: center;
-  margin: 2mm 0 0;
-  font-size: 10px;
+.receipt-80mm .receipt-pay {
+  margin-top: 1mm;
+  font-size: 9px;
 }
 
 .receipt-80mm .receipt-notes {
-  margin: 1.5mm 0 0;
-  font-size: 9px;
+  margin: 1mm 0 0;
+  font-size: 8px;
   word-break: break-word;
 }
 
 .receipt-80mm .receipt-thanks {
-  margin-top: 3mm;
-  font-size: 10px;
+  text-align: center;
+  margin: 1.2mm 0 0;
+  font-size: 9px;
+  font-weight: 600;
 }
 
 @page {
@@ -188,6 +234,7 @@ body {
   margin: 12mm;
 }
 
+/* Continuous 80mm roll — height = content only */
 @page thermal-80mm {
   size: 80mm auto;
   margin: 0;
@@ -196,14 +243,20 @@ body {
 @media print {
   html,
   body {
+    width: auto !important;
+    height: auto !important;
+    min-height: 0 !important;
     margin: 0 !important;
     padding: 0 !important;
     background: white !important;
     color: black !important;
+    overflow: visible !important;
   }
 
   body.printing-receipt {
     width: 80mm !important;
+    height: auto !important;
+    min-height: 0 !important;
   }
 
   body.printing-receipt * {
@@ -222,13 +275,19 @@ body {
   body.printing-receipt .print-only.receipt-80mm,
   body.printing-receipt .receipt-80mm.print-only {
     display: block !important;
-    position: absolute;
-    left: 0;
-    top: 0;
+    position: static !important;
+    left: auto !important;
+    top: auto !important;
     width: 72mm !important;
     max-width: 72mm !important;
-    margin: 2mm 4mm !important;
-    padding: 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 4mm !important;
+    padding: 1.5mm 1.5mm 2mm !important;
     page: thermal-80mm;
+    page-break-after: avoid;
+    page-break-inside: avoid;
+    break-after: avoid;
+    break-inside: avoid;
   }
 }

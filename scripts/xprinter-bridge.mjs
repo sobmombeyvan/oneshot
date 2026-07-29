@@ -1,52 +1,50 @@
 /**
- * Local bridge: sends ESC/POS cash-drawer kick to XPrinter (TCP port 9100).
+ * Local POS bridge for XPrinter (USB or LAN) + cash drawer.
  *
- * Usage:
- *   XPRINTER_HOST=192.168.1.50 node scripts/xprinter-bridge.mjs
- *   # USB shared on this PC:
- *   XPRINTER_HOST=127.0.0.1 node scripts/xprinter-bridge.mjs
+ * USB (recommended on Windows):
+ *   set XPRINTER_MODE=share
+ *   set XPRINTER_SHARE=XP-80C
+ *   node scripts/xprinter-bridge.mjs
  *
- * POST http://127.0.0.1:17809/open-drawer
- * POST http://127.0.0.1:17809/print-receipt  { "lines": ["..."] }
+ * LAN / Ethernet printer:
+ *   set XPRINTER_MODE=tcp
+ *   set XPRINTER_HOST=192.168.1.50
+ *   set XPRINTER_PORT=9100
+ *   node scripts/xprinter-bridge.mjs
+ *
+ * Endpoints:
+ *   GET  /health
+ *   POST /open-drawer
+ *   POST /print-receipt  { "lines": ["..."], "openDrawer": true }
  */
 
 import http from "node:http";
 import net from "node:net";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { spawn } from "node:child_process";
 
 const BRIDGE_PORT = parseInt(process.env.XPRINTER_BRIDGE_PORT || "17809", 10);
+const MODE = (process.env.XPRINTER_MODE || "share").toLowerCase(); // share | tcp
 const PRINTER_HOST = process.env.XPRINTER_HOST || "127.0.0.1";
 const PRINTER_PORT = parseInt(process.env.XPRINTER_PORT || "9100", 10);
+const PRINTER_SHARE = process.env.XPRINTER_SHARE || "Xprinter";
 
-/** ESC p m t1 t2 — pin 2, 25ms on, 250ms off (XPrinter default) */
+/** ESC p m t1 t2 — pin 2, 25ms on, 250ms off */
 const DRAWER_CMD = Buffer.from([0x1b, 0x70, 0x00, 0x19, 0xfa]);
 const INIT_CMD = Buffer.from([0x1b, 0x40]);
 const ALIGN_CENTER = Buffer.from([0x1b, 0x61, 0x01]);
 const ALIGN_LEFT = Buffer.from([0x1b, 0x61, 0x00]);
-const CUT_CMD = Buffer.from([0x1d, 0x56, 0x00]);
-
-function openDrawer() {
-  return new Promise((resolve, reject) => {
-    const client = net.createConnection({ host: PRINTER_HOST, port: PRINTER_PORT }, () => {
-      client.write(DRAWER_CMD);
-      client.end();
-      resolve();
-    });
-    client.setTimeout(5000, () => {
-      client.destroy();
-      reject(new Error(`Printer timeout (${PRINTER_HOST}:${PRINTER_PORT})`));
-    });
-    client.on("error", reject);
-  });
-}
+/** GS V 66 n — feed n lines then partial cut */
+const CUT_CMD = Buffer.from([0x1d, 0x56, 0x42, 0x03]);
 
 function readJsonBody(req) {
   return new Promise((resolve, reject) => {
     let raw = "";
     req.on("data", (chunk) => {
       raw += chunk.toString("utf8");
-      if (raw.length > 128000) {
-        reject(new Error("Payload too large"));
-      }
+      if (raw.length > 128000) reject(new Error("Payload too large"));
     });
     req.on("end", () => {
       try {
@@ -59,19 +57,32 @@ function readJsonBody(req) {
   });
 }
 
-function toEscPosBuffer(lines) {
-  const parts = [INIT_CMD, ALIGN_LEFT];
+function toEscPosBuffer(lines, openDrawer = false) {
+  const parts = [INIT_CMD];
+  let centered = true;
+  parts.push(ALIGN_CENTER);
+
   for (const line of lines) {
-    parts.push(Buffer.from(String(line), "utf8"));
+    const text = String(line ?? "").trimEnd();
+    if (!text) continue;
+
+    if (text.startsWith("---") || text.startsWith("===")) {
+      if (centered) {
+        parts.push(ALIGN_LEFT);
+        centered = false;
+      }
+    }
+
+    parts.push(Buffer.from(text, "utf8"));
     parts.push(Buffer.from("\n", "utf8"));
   }
-  parts.push(Buffer.from("\n\n", "utf8"));
+
+  if (openDrawer) parts.push(DRAWER_CMD);
   parts.push(CUT_CMD);
   return Buffer.concat(parts);
 }
 
-function printReceipt(lines) {
-  const payload = toEscPosBuffer(lines);
+function sendTcp(payload) {
   return new Promise((resolve, reject) => {
     const client = net.createConnection({ host: PRINTER_HOST, port: PRINTER_PORT }, () => {
       client.write(payload);
@@ -84,6 +95,59 @@ function printReceipt(lines) {
     });
     client.on("error", reject);
   });
+}
+
+function sendWindowsShare(payload) {
+  return new Promise((resolve, reject) => {
+    const tmp = path.join(os.tmpdir(), `oneshot-print-${Date.now()}.bin`);
+    try {
+      fs.writeFileSync(tmp, payload);
+    } catch (err) {
+      reject(err);
+      return;
+    }
+
+    // Raw copy to Windows shared/local printer (USB works this way)
+    const target = `\\\\localhost\\${PRINTER_SHARE}`;
+    const child = spawn("cmd.exe", ["/c", `copy /b "${tmp}" "${target}"`], {
+      windowsHide: true,
+    });
+
+    let stderr = "";
+    child.stderr.on("data", (d) => {
+      stderr += d.toString();
+    });
+    child.on("error", (err) => {
+      try {
+        fs.unlinkSync(tmp);
+      } catch {
+        /* ignore */
+      }
+      reject(err);
+    });
+    child.on("close", (code) => {
+      try {
+        fs.unlinkSync(tmp);
+      } catch {
+        /* ignore */
+      }
+      if (code === 0) resolve();
+      else reject(new Error(stderr.trim() || `copy failed (code ${code}) → ${target}`));
+    });
+  });
+}
+
+async function sendToPrinter(payload) {
+  if (MODE === "tcp") return sendTcp(payload);
+  return sendWindowsShare(payload);
+}
+
+async function openDrawer() {
+  await sendToPrinter(Buffer.concat([INIT_CMD, DRAWER_CMD]));
+}
+
+async function printReceipt(lines, openDrawerFlag = false) {
+  await sendToPrinter(toEscPosBuffer(lines, openDrawerFlag));
 }
 
 const server = http.createServer(async (req, res) => {
@@ -99,7 +163,16 @@ const server = http.createServer(async (req, res) => {
 
   if (req.url === "/health") {
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ ok: true, printer: `${PRINTER_HOST}:${PRINTER_PORT}` }));
+    res.end(
+      JSON.stringify({
+        ok: true,
+        mode: MODE,
+        printer:
+          MODE === "tcp"
+            ? `${PRINTER_HOST}:${PRINTER_PORT}`
+            : `\\\\localhost\\${PRINTER_SHARE}`,
+      })
+    );
     return;
   }
 
@@ -124,9 +197,9 @@ const server = http.createServer(async (req, res) => {
         res.end(JSON.stringify({ ok: false, error: "Missing lines[]" }));
         return;
       }
-      await printReceipt(lines);
+      await printReceipt(lines, !!body?.openDrawer);
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ ok: true }));
+      res.end(JSON.stringify({ ok: true, drawer: !!body?.openDrawer }));
     } catch (err) {
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ok: false, error: err.message }));
@@ -139,7 +212,9 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(BRIDGE_PORT, "127.0.0.1", () => {
-  console.log(`XPrinter bridge → ${PRINTER_HOST}:${PRINTER_PORT}`);
+  console.log(`XPrinter bridge mode=${MODE}`);
+  if (MODE === "tcp") console.log(`Printer TCP → ${PRINTER_HOST}:${PRINTER_PORT}`);
+  else console.log(`Printer USB/share → \\\\localhost\\${PRINTER_SHARE}`);
   console.log(`POST http://127.0.0.1:${BRIDGE_PORT}/open-drawer`);
   console.log(`POST http://127.0.0.1:${BRIDGE_PORT}/print-receipt`);
 });

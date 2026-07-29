@@ -149,24 +149,16 @@ export async function connectUsbCashDrawer(): Promise<boolean> {
   return pairWebSerialPort();
 }
 
-/** Open cash drawer when payment is cash. Non-blocking; failures are logged only. */
+/** Open cash drawer when payment is cash. Prefer local bridge (USB/share). */
 export async function openCashDrawer(): Promise<{ ok: boolean; method?: string; error?: string }> {
   const settings = getCashDrawerSettings();
-  if (!settings.enabled) {
+  // Always force enabled for POS cash — drawer must open automatically
+  const enabled = settings.enabled !== false;
+  if (!enabled) {
     return { ok: false, error: "disabled" };
   }
 
-  // 1) Direct USB serial (best for USB-only POS PCs after one-time permission)
-  if (settings.usbDirect) {
-    try {
-      const ok = await openViaWebSerial();
-      if (ok) return { ok: true, method: "usb-serial" };
-    } catch (err) {
-      console.warn("[cash-drawer] USB serial failed:", err);
-    }
-  }
-
-  // 2) Local XPrinter bridge
+  // 1) Local XPrinter bridge (USB share / TCP) — most reliable for POS
   if (settings.bridgeUrl) {
     try {
       await openViaBridge(settings.bridgeUrl);
@@ -176,7 +168,17 @@ export async function openCashDrawer(): Promise<{ ok: boolean; method?: string; 
     }
   }
 
-  // 3) QZ Tray (if installed and printer name configured)
+  // 2) Direct USB serial (if user authorized a COM port)
+  if (settings.usbDirect) {
+    try {
+      const ok = await openViaWebSerial();
+      if (ok) return { ok: true, method: "usb-serial" };
+    } catch (err) {
+      console.warn("[cash-drawer] USB serial failed:", err);
+    }
+  }
+
+  // 3) QZ Tray
   if (settings.qzPrinterName && typeof window !== "undefined" && window.qz) {
     try {
       await openViaQZTray(settings.qzPrinterName);
@@ -188,10 +190,11 @@ export async function openCashDrawer(): Promise<{ ok: boolean; method?: string; 
 
   return {
     ok: false,
-    error: "Aucun canal XPrinter trouvé. Autorisez USB dans Parametres ou lancez « npm run printer:bridge ».",
+    error: "Bridge XPrinter non demarre. Sur le PC caisse: npm run printer:bridge",
   };
 }
 
 export function shouldOpenCashDrawer(paymentMethod: string | null | undefined): boolean {
-  return paymentMethod === "cash";
+  if (!paymentMethod) return false;
+  return paymentMethod.toLowerCase() === "cash";
 }

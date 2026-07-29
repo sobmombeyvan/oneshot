@@ -59,9 +59,15 @@ export default function SettingsPage() {
     setPrinters(status.printers ?? []);
     if (status.ok && !printer.windowsPrinterName) {
       const guess =
-        status.printers?.find((p) => /xprint|xp-|thermal|pos/i.test(p)) ??
+        status.printers?.find((p) => /pos-?\d|xprint|xp-|thermal/i.test(p)) ??
         status.printers?.find((p) => !/onenote|pdf|fax|xps|sage/i.test(p));
-      if (guess) setPrinter((prev) => ({ ...prev, windowsPrinterName: guess }));
+      if (guess) {
+        setPrinter((prev) => ({
+          ...prev,
+          windowsPrinterName: guess,
+          paperWidth: /80/.test(guess) ? 80 : prev.paperWidth,
+        }));
+      }
     }
   };
 
@@ -160,11 +166,31 @@ export default function SettingsPage() {
             </div>
 
             <div className="space-y-2">
+              <Label>Largeur papier</Label>
+              <div className="flex gap-2">
+                {([58, 80] as const).map((w) => (
+                  <button
+                    key={w}
+                    type="button"
+                    onClick={() => setPrinter({ ...printer, paperWidth: w })}
+                    className={`rounded-xl border px-3 py-2 text-sm transition-colors ${
+                      printer.paperWidth === w
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-smoked-brown/40 text-off-white/60 hover:border-primary/40"
+                    }`}
+                  >
+                    {w} mm
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
               <Label>Nom exact imprimante Windows (USB)</Label>
               <Input
                 value={printer.windowsPrinterName}
                 onChange={(e) => setPrinter({ ...printer, windowsPrinterName: e.target.value })}
-                placeholder="Ex: XP-80C / Xprinter XP-80"
+                placeholder="Ex: POS-58 / XP-80C"
               />
               {printers.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 pt-1">

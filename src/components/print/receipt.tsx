@@ -1,7 +1,8 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { BRAND, VAT_RATE } from "@/lib/constants";
-import { getCashDrawerSettings } from "@/lib/printer/cash-drawer";
+import { charsPerLine, getCashDrawerSettings, type PaperWidth } from "@/lib/printer/cash-drawer";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 
 export interface ReceiptItem {
@@ -44,8 +45,8 @@ function paymentLabel(method?: string | null) {
   return PAYMENT_LABELS[method] ?? method.replace(/_/g, " ");
 }
 
-/** Pad two columns for ~32-char thermal width */
-function padRow(left: string, right: string, width = 32) {
+/** Pad two columns to the printer line width */
+function padRow(left: string, right: string, width: number) {
   const l = left.slice(0, Math.max(0, width - right.length - 1));
   const spaces = Math.max(1, width - l.length - right.length);
   return `${l}${" ".repeat(spaces)}${right}`;
@@ -53,9 +54,17 @@ function padRow(left: string, right: string, width = 32) {
 
 export function ReceiptPrintView({ data, id = "receipt-print" }: { data: ReceiptData; id?: string }) {
   const isInvoice = Boolean(data.invoiceNumber) || data.title?.toLowerCase().includes("facture");
+  const [paperWidth, setPaperWidth] = useState<PaperWidth>(58);
+
+  useEffect(() => {
+    setPaperWidth(getCashDrawerSettings().paperWidth);
+  }, []);
 
   return (
-    <div id={id} className="print-only receipt-80mm hidden">
+    <div
+      id={id}
+      className={`print-only receipt-thermal hidden ${paperWidth === 80 ? "paper-80" : "paper-58"}`}
+    >
       <div className="receipt-header">
         <h1 className="receipt-brand">{BRAND.name}</h1>
         <p className="receipt-sub">{BRAND.subtitle}</p>
@@ -164,42 +173,46 @@ export function ReceiptPrintView({ data, id = "receipt-print" }: { data: Receipt
   );
 }
 
-function toReceiptLines(data: ReceiptData): string[] {
+function toReceiptLines(data: ReceiptData, paperWidth: PaperWidth): string[] {
   const isInvoice = Boolean(data.invoiceNumber) || data.title?.toLowerCase().includes("facture");
+  const width = charsPerLine(paperWidth);
+  const dashes = "-".repeat(width);
+  const equals = "=".repeat(width);
+  const row = (left: string, right: string) => padRow(left, right, width);
   const lines: string[] = [];
 
   lines.push(BRAND.name.toUpperCase());
   lines.push(BRAND.subtitle);
   lines.push(isInvoice ? "FACTURE" : (data.title?.toUpperCase() ?? "TICKET"));
-  lines.push("--------------------------------");
+  lines.push(dashes);
 
-  if (data.invoiceNumber) lines.push(padRow("N°", data.invoiceNumber));
-  if (data.orderId) lines.push(padRow("Cmd", `#${data.orderId.slice(0, 8).toUpperCase()}`));
-  if (data.tableNumber != null) lines.push(padRow("Table", String(data.tableNumber)));
-  if (data.station) lines.push(padRow("Station", data.station));
-  lines.push(padRow("Date", formatDateTime(data.createdAt)));
-  lines.push("--------------------------------");
+  if (data.invoiceNumber) lines.push(row("N°", data.invoiceNumber));
+  if (data.orderId) lines.push(row("Cmd", `#${data.orderId.slice(0, 8).toUpperCase()}`));
+  if (data.tableNumber != null) lines.push(row("Table", String(data.tableNumber)));
+  if (data.station) lines.push(row("Station", data.station));
+  lines.push(row("Date", formatDateTime(data.createdAt)));
+  lines.push(dashes);
 
   for (const item of data.items) {
     lines.push(item.name);
     const qty = `x${item.quantity}`;
     const amount = item.price > 0 ? formatCurrency(item.price * item.quantity) : "";
-    lines.push(amount ? padRow(qty, amount) : qty);
+    lines.push(amount ? row(qty, amount) : qty);
   }
 
   if (data.subtotal > 0 || data.total > 0) {
-    lines.push("--------------------------------");
-    if (data.subtotal > 0) lines.push(padRow("Sous-total", formatCurrency(data.subtotal)));
-    if ((data.discount ?? 0) > 0) lines.push(padRow("Remise", `-${formatCurrency(data.discount ?? 0)}`));
-    if (VAT_RATE > 0) lines.push(padRow(`TVA (${VAT_RATE}%)`, formatCurrency(data.tax)));
-    lines.push("================================");
-    lines.push(padRow("TOTAL", formatCurrency(data.total)));
+    lines.push(dashes);
+    if (data.subtotal > 0) lines.push(row("Sous-total", formatCurrency(data.subtotal)));
+    if ((data.discount ?? 0) > 0) lines.push(row("Remise", `-${formatCurrency(data.discount ?? 0)}`));
+    if (VAT_RATE > 0) lines.push(row(`TVA (${VAT_RATE}%)`, formatCurrency(data.tax)));
+    lines.push(equals);
+    lines.push(row("TOTAL", formatCurrency(data.total)));
   }
 
-  if (data.paymentMethod) lines.push(padRow("Paiement", paymentLabel(data.paymentMethod)));
+  if (data.paymentMethod) lines.push(row("Paiement", paymentLabel(data.paymentMethod)));
   if (data.notes) lines.push(`Note: ${data.notes}`);
 
-  lines.push("--------------------------------");
+  lines.push(dashes);
   lines.push("Merci de votre visite !");
   return lines;
 }
@@ -215,8 +228,9 @@ async function printViaBridge(data: ReceiptData): Promise<boolean> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      lines: toReceiptLines(data),
+      lines: toReceiptLines(data, settings.paperWidth),
       openDrawer,
+      paperWidth: settings.paperWidth,
       printerName: settings.windowsPrinterName || undefined,
     }),
   });

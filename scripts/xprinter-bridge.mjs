@@ -27,8 +27,8 @@ const BRIDGE_PORT = parseInt(process.env.XPRINTER_BRIDGE_PORT || "17809", 10);
 const MODE = (process.env.XPRINTER_MODE || "winspool").toLowerCase();
 const PRINTER_HOST = process.env.XPRINTER_HOST || "127.0.0.1";
 const PRINTER_PORT = parseInt(process.env.XPRINTER_PORT || "9100", 10);
-const PRINTER_SHARE = process.env.XPRINTER_SHARE || process.env.XPRINTER_NAME || "Xprinter";
-const PRINTER_NAME = process.env.XPRINTER_NAME || process.env.XPRINTER_SHARE || "Xprinter";
+const PRINTER_SHARE = process.env.XPRINTER_SHARE || process.env.XPRINTER_NAME || "POS-58";
+const PRINTER_NAME = process.env.XPRINTER_NAME || process.env.XPRINTER_SHARE || "POS-58";
 
 const DRAWER_CMD = Buffer.from([0x1b, 0x70, 0x00, 0x19, 0xfa]);
 const INIT_CMD = Buffer.from([0x1b, 0x40]);

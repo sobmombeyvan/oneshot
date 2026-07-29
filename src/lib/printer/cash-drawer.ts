@@ -4,12 +4,16 @@
  */
 export const CASH_DRAWER_ESC_POS = "\x1B\x70\x00\x19\xFA";
 
+export type PaperWidth = 58 | 80;
+
 export interface CashDrawerSettings {
   enabled: boolean;
   /** Local bridge URL, e.g. http://127.0.0.1:17809 */
   bridgeUrl: string;
   /** Exact Windows printer name (Settings > Printers) */
   windowsPrinterName: string;
+  /** Thermal paper width in mm */
+  paperWidth: PaperWidth;
   /** QZ Tray printer name (optional) */
   qzPrinterName: string;
   /** Try direct USB serial first when available */
@@ -26,11 +30,17 @@ const DEFAULT_SETTINGS: CashDrawerSettings = {
       : "http://127.0.0.1:17809",
   windowsPrinterName:
     typeof process !== "undefined"
-      ? process.env.NEXT_PUBLIC_XPRINTER_NAME ?? ""
-      : "",
+      ? process.env.NEXT_PUBLIC_XPRINTER_NAME ?? "POS-58"
+      : "POS-58",
+  paperWidth: 58,
   qzPrinterName: "",
   usbDirect: false,
 };
+
+/** Characters per line for ESC/POS font A */
+export function charsPerLine(paperWidth: PaperWidth): number {
+  return paperWidth === 80 ? 42 : 32;
+}
 
 export function getCashDrawerSettings(): CashDrawerSettings {
   if (typeof window === "undefined") return DEFAULT_SETTINGS;

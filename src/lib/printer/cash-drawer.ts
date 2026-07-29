@@ -39,18 +39,32 @@ const DEFAULT_SETTINGS: CashDrawerSettings = {
 
 /**
  * Characters per line for ESC/POS font A, minus a right margin.
- * Full width is 32 (58mm) / 48 (80mm); we shrink it so the ticket
- * is not printed edge to edge.
+ * Full width is 32 (58mm) / 48 (80mm); we shrink it slightly so the ticket
+ * is not printed edge to edge, while still fitting amounts in the millions.
  */
 export function charsPerLine(paperWidth: PaperWidth): number {
-  return paperWidth === 80 ? 42 : 28;
+  return paperWidth === 80 ? 44 : 30;
 }
 
 export function getCashDrawerSettings(): CashDrawerSettings {
   if (typeof window === "undefined") return DEFAULT_SETTINGS;
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
-    if (raw) return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+    if (!raw) return DEFAULT_SETTINGS;
+
+    const stored = JSON.parse(raw) as Partial<CashDrawerSettings>;
+    const merged = { ...DEFAULT_SETTINGS, ...stored };
+
+    // A blank value saved earlier must not wipe out the default, otherwise the
+    // app silently stops talking to the bridge and prints via the browser.
+    if (!merged.bridgeUrl?.trim()) merged.bridgeUrl = DEFAULT_SETTINGS.bridgeUrl;
+    if (!merged.windowsPrinterName?.trim()) {
+      merged.windowsPrinterName = DEFAULT_SETTINGS.windowsPrinterName;
+    }
+    if (merged.paperWidth !== 58 && merged.paperWidth !== 80) {
+      merged.paperWidth = DEFAULT_SETTINGS.paperWidth;
+    }
+    return merged;
   } catch {
     /* ignore */
   }
@@ -78,13 +92,46 @@ declare global {
   }
 }
 
-async function openViaBridge(bridgeUrl: string, printerName?: string): Promise<boolean> {
-  const base = bridgeUrl.replace(/\/$/, "");
+/** A hung bridge must never freeze the checkout */
+const BRIDGE_TIMEOUT_MS = 8000;
+
+/** fetch against the local bridge, with a timeout */
+export async function bridgeFetch(path: string, init?: RequestInit): Promise<Response> {
+  const settings = getCashDrawerSettings();
+  if (!settings.bridgeUrl) throw new Error("Aucune URL de bridge configuree");
+
+  const base = settings.bridgeUrl.replace(/\/$/, "");
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), BRIDGE_TIMEOUT_MS);
+  try {
+    return await fetch(`${base}${path}`, {
+      ...init,
+      cache: "no-store",
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Turns a fetch failure into something a cashier can act on */
+export function describeBridgeError(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err);
+  if (err instanceof Error && err.name === "AbortError") {
+    return "Le bridge ne repond pas (delai depasse)";
+  }
+  if (message.includes("Failed to fetch") || message.includes("NetworkError")) {
+    return "Bridge injoignable — lancez start-xprinter-bridge.bat sur le PC caisse";
+  }
+  return message;
+}
+
+async function openViaBridge(printerName?: string): Promise<boolean> {
   const params = new URLSearchParams();
   if (printerName) params.set("printer", printerName);
   const query = params.toString();
 
-  const res = await fetch(`${base}/open-drawer${query ? `?${query}` : ""}`, {
+  const res = await bridgeFetch(`/open-drawer${query ? `?${query}` : ""}`, {
     method: "POST",
     headers: { "Content-Type": "text/plain;charset=utf-8" },
     body: "",
@@ -127,15 +174,12 @@ export async function checkPrinterBridge(): Promise<{
   const settings = getCashDrawerSettings();
   if (!settings.bridgeUrl) return { ok: false, error: "no-bridge-url" };
   try {
-    const res = await fetch(`${settings.bridgeUrl.replace(/\/$/, "")}/health`, {
-      method: "GET",
-      cache: "no-store",
-    });
+    const res = await bridgeFetch("/health", { method: "GET" });
     if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
     const json = (await res.json()) as { ok?: boolean; printers?: string[]; printer?: string };
     return { ok: !!json.ok, printers: json.printers, printer: json.printer };
-  } catch {
-    return { ok: false, error: "Bridge offline — lancez scripts\\start-xprinter-bridge.bat" };
+  } catch (err) {
+    return { ok: false, error: describeBridgeError(err) };
   }
 }
 
@@ -146,11 +190,13 @@ export async function openCashDrawer(): Promise<{ ok: boolean; method?: string; 
     return { ok: false, error: "disabled" };
   }
 
+  let bridgeError = "";
   if (settings.bridgeUrl) {
     try {
-      await openViaBridge(settings.bridgeUrl, settings.windowsPrinterName);
+      await openViaBridge(settings.windowsPrinterName);
       return { ok: true, method: "bridge" };
     } catch (err) {
+      bridgeError = describeBridgeError(err);
       console.warn("[cash-drawer] Bridge failed:", err);
     }
   }
@@ -166,7 +212,9 @@ export async function openCashDrawer(): Promise<{ ok: boolean; method?: string; 
 
   return {
     ok: false,
-    error: "Bridge XPrinter non demarre. Sur le PC caisse: scripts\\start-xprinter-bridge.bat",
+    error:
+      bridgeError ||
+      "Bridge XPrinter non demarre. Sur le PC caisse: scripts\\start-xprinter-bridge.bat",
   };
 }
 

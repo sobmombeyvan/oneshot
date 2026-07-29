@@ -89,7 +89,8 @@ body {
   background: #fff;
   color: #000;
   font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Menlo, monospace;
-  font-size: 14px;
+  /* Small enough that amounts in the millions stay on one line on 58mm paper */
+  font-size: 12px;
   line-height: 1.25;
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
@@ -101,7 +102,7 @@ body {
 }
 
 .receipt-thermal .receipt-brand {
-  font-size: 20px;
+  font-size: 17px;
   font-weight: 800;
   letter-spacing: 0.06em;
   margin: 0;
@@ -170,7 +171,7 @@ body {
 }
 
 .receipt-thermal .receipt-item-name {
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 700;
   word-break: break-word;
   line-height: 1.2;
@@ -205,7 +206,7 @@ body {
 }
 
 .receipt-thermal .receipt-total {
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 800;
   padding: 0.6mm 0 0;
 }

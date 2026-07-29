@@ -7,7 +7,7 @@ rem XPRINTER_NAME  = exact printer name from Devices and Printers
 rem XPRINTER_LEFT_PAD = left margin of the ticket, in characters (0-8)
 if "%XPRINTER_NAME%"=="" set XPRINTER_NAME=POS-58
 if "%XPRINTER_BRIDGE_PORT%"=="" set XPRINTER_BRIDGE_PORT=17809
-if "%XPRINTER_LEFT_PAD%"=="" set XPRINTER_LEFT_PAD=2
+if "%XPRINTER_LEFT_PAD%"=="" set XPRINTER_LEFT_PAD=1
 
 echo.
 echo ONE SHOT Printer Bridge - starting (no Node.js, no administrator)

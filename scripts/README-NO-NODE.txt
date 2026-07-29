@@ -43,9 +43,13 @@ Check the margins on the printed ticket: the text must NOT touch the
 left edge of the paper. To change the margin, edit this line in BOTH
 start-xprinter-bridge.bat and test-print.bat:
 
-      set XPRINTER_LEFT_PAD=2
+      set XPRINTER_LEFT_PAD=1
 
-0 = no margin, 2 = default, up to 8. Run test-print.bat after each change.
+0 = no margin, 1 = default, up to 8. Run test-print.bat after each change.
+
+The test ticket contains an amount in the millions (1 500 000) on purpose:
+check that it prints in full, on ONE line, with spaces between the groups
+of digits and no "?" characters.
 
 
 STEP 3 - Start the bridge
@@ -120,6 +124,11 @@ Every print and every error is written to:  bridge-log.txt
 
 Browser print popup appears
    -> the bridge is not running. Start start-xprinter-bridge.bat
+   -> the POS now shows the exact reason in the orange message at the
+      top right of the screen. Read it, it says what to fix.
+
+Amounts print as 1?500?000
+   -> old version of the app. Press Ctrl+F5 in Chrome to reload it.
 
 "Bridge OFFLINE" in Parametres
    -> open http://127.0.0.1:17809/health in Chrome on that PC

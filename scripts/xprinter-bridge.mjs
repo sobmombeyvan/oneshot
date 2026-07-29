@@ -95,9 +95,10 @@ function toEscPosBuffer(lines, openDrawer = false) {
     }
 
     if (phase === "header") {
-      // Brand first line stays double; next header lines tall
+      // Only the brand line is enlarged; the rest stays normal size so long
+      // amounts always fit on one line.
       write(text);
-      parts.push(SIZE_TALL, BOLD_OFF);
+      parts.push(SIZE_NORMAL, BOLD_OFF);
       continue;
     }
 

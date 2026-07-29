@@ -219,17 +219,21 @@ function POSPageInner() {
       queryClient.invalidateQueries({ queryKey: ["restaurant-tables"] });
       queryClient.invalidateQueries({ queryKey: ["all-orders"] });
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      const needsDrawer = shouldOpenCashDrawer(selectedPayment);
       void printReceipt(receiptData).then((printResult) => {
         if (printResult.via === "bridge") {
-          if (shouldOpenCashDrawer(selectedPayment)) {
-            toast.success("Ticket imprime + tiroir ouvert");
-          }
+          toast.success(needsDrawer ? "Ticket imprime + tiroir ouvert" : "Ticket imprime");
           return;
         }
-        if (shouldOpenCashDrawer(selectedPayment)) {
-          toast.warning("Impression navigateur: le tiroir ne peut pas s'ouvrir. Lancez start-xprinter-bridge.bat");
-          void openCashDrawer();
-        }
+        // Browser print means the bridge refused or is not reachable: show why,
+        // otherwise the cashier cannot tell the printer setup is broken.
+        toast.warning(
+          printResult.error
+            ? `Impression navigateur — ${printResult.error}`
+            : "Impression navigateur: bridge XPrinter indisponible",
+          { duration: 8000 }
+        );
+        if (needsDrawer) void openCashDrawer();
       });
     },
     onError: (err: Error) => toast.error(err.message),

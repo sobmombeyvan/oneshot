@@ -22,7 +22,7 @@ if ($Port -le 0) {
 }
 # Left margin, in blank characters, added to every printed line
 if ($LeftPad -lt 0) {
-  if ($env:XPRINTER_LEFT_PAD) { $LeftPad = [int]$env:XPRINTER_LEFT_PAD } else { $LeftPad = 2 }
+  if ($env:XPRINTER_LEFT_PAD) { $LeftPad = [int]$env:XPRINTER_LEFT_PAD } else { $LeftPad = 1 }
 }
 if ($LeftPad -lt 0) { $LeftPad = 0 }
 if ($LeftPad -gt 8) { $LeftPad = 8 }
@@ -109,6 +109,26 @@ Add-Type -TypeDefinition $csharp -Language CSharp
 
 $enc = [System.Text.Encoding]::GetEncoding(437)
 
+# Codepage 437 has no Unicode spaces. Left as-is they print as "?", which is
+# what turned amounts like "1 500 000" into "1?500?000".
+function Get-PrintableText {
+  param([string]$Text)
+  if ($Text -eq $null) { return "" }
+  $out = $Text
+  foreach ($cp in @(0x00A0, 0x1680, 0x2007, 0x2008, 0x2009, 0x200A, 0x202F, 0x205F, 0x3000)) {
+    $out = $out.Replace([string][char]$cp, " ")
+  }
+  foreach ($cp in @(0x2018, 0x2019)) { $out = $out.Replace([string][char]$cp, "'") }
+  foreach ($cp in @(0x201C, 0x201D)) { $out = $out.Replace([string][char]$cp, '"') }
+  foreach ($cp in @(0x2010, 0x2011, 0x2012, 0x2013, 0x2014, 0x2015)) {
+    $out = $out.Replace([string][char]$cp, "-")
+  }
+  foreach ($cp in @(0x200B, 0x200C, 0x200D, 0xFEFF)) { $out = $out.Replace([string][char]$cp, "") }
+  $out = $out.Replace([string][char]0x2026, "...")
+  $out = $out.Replace([string][char]0x00B0, "o")
+  return $out
+}
+
 function Get-EscPosBytes {
   param([string[]]$Lines, [bool]$OpenDrawer)
 
@@ -129,7 +149,7 @@ function Get-EscPosBytes {
 
   foreach ($line in $Lines) {
     if ($line -eq $null) { continue }
-    $text = ([string]$line).TrimEnd()
+    $text = (Get-PrintableText ([string]$line)).TrimEnd()
     if ($text.Length -eq 0) { continue }
 
     $isRule = $text.StartsWith("---") -or $text.StartsWith("===")
@@ -159,8 +179,9 @@ function Get-EscPosBytes {
     $writer.Write([byte]0x0A)
 
     if ($phase -eq "header") {
-      # brand line printed big, remaining header lines smaller
-      $writer.Write([byte[]](0x1D, 0x21, 0x01))
+      # Only the brand line is enlarged; subtitle and title stay normal size
+      # so long amounts always fit on one line.
+      $writer.Write([byte[]](0x1D, 0x21, 0x00))
       $writer.Write([byte[]](0x1B, 0x45, 0x00))
     }
   }
@@ -287,17 +308,27 @@ function Get-QueryValue {
 }
 
 if ($SelfTest -or $DumpTo -ne "") {
+  # 30 columns wide, with a million so the widest amount can be checked
   $sample = @(
     "ONE SHOT",
     "Restaurant",
-    "----------------------------",
-    "Test marges / margin test",
-    "1 x Cafe expresso       500",
-    "2 x Jus d'orange      2 000",
-    "----------------------------",
-    "TOTAL                 2 500",
-    "Paiement: Especes",
-    "Merci et a bientot !"
+    "TICKET DE TEST",
+    "------------------------------",
+    "Article          Montant XAF",
+    "------------------------------",
+    "Cafe expresso",
+    "x1                        500",
+    "Jus d'orange",
+    "x2                      2 000",
+    "Menu complet",
+    "x3                  1 500 000",
+    "------------------------------",
+    "Sous-total          1 502 500",
+    "==============================",
+    "TOTAL               1 502 500",
+    "Paiement            Especes",
+    "------------------------------",
+    "Merci de votre visite !"
   )
   $bytes = Get-EscPosBytes $sample $true
 

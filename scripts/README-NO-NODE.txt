@@ -9,6 +9,7 @@ WHAT YOU NEED
 2) Cash drawer cable (RJ11) plugged into the PRINTER (not the PC)
 3) These files copied to the PC, for example C:\ONESHOT\scripts\ :
       start-xprinter-bridge.bat
+      test-print.bat
       xprinter-bridge.ps1
       install-bridge-autostart.ps1
 4) Google Chrome (recommended) to open the Vercel website
@@ -54,8 +55,24 @@ A black window opens and shows:
 
 Leave this window OPEN while the POS is used.
 
-If it says it cannot open the port:
-   right-click start-xprinter-bridge.bat > Run as administrator
+If the port is not open yet, Windows shows a UAC prompt: click Yes.
+That happens only the first time.
+
+
+STEP 3b - Check the margins (recommended)
+-----------------------------------------
+Double-click:   test-print.bat
+
+It prints one sample ticket and opens the drawer.
+The text must NOT touch the left edge of the paper.
+
+Margin too small or too big? Open start-xprinter-bridge.bat and
+test-print.bat with Notepad and change this line in BOTH files:
+
+      set XPRINTER_LEFT_PAD=2
+
+Use 0 for no margin, 1, 2, 3 ... up to 8 (2 is the default).
+Then run test-print.bat again.
 
 
 STEP 4 - Verify
@@ -111,6 +128,14 @@ Browser print popup appears
 
 "OpenPrinter failed (code 1801)"
    -> the printer name is wrong. Use the exact name from /health
+   -> test-print.bat also lists every printer name of the PC
+
+Text touches the paper edge (no margin)
+   -> raise XPRINTER_LEFT_PAD in start-xprinter-bridge.bat (see STEP 3b)
+
+Lines are cut on the right / wrap to the next line
+   -> in Parametres, check "Largeur papier" matches your printer
+      (58 mm for POS-58, 80 mm for a wide printer)
 
 Ticket prints but drawer stays closed
    -> check the RJ11 cable goes into the PRINTER, not the PC

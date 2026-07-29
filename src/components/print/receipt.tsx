@@ -179,6 +179,8 @@ function toReceiptLines(data: ReceiptData, paperWidth: PaperWidth): string[] {
   const dashes = "-".repeat(width);
   const equals = "=".repeat(width);
   const row = (left: string, right: string) => padRow(left, right, width);
+  // Wrapped lines would lose the left margin the bridge adds, so keep them short
+  const clamp = (text: string) => (text.length > width ? text.slice(0, width - 1) + "." : text);
   const lines: string[] = [];
 
   lines.push(BRAND.name.toUpperCase());
@@ -194,7 +196,7 @@ function toReceiptLines(data: ReceiptData, paperWidth: PaperWidth): string[] {
   lines.push(dashes);
 
   for (const item of data.items) {
-    lines.push(item.name);
+    lines.push(clamp(item.name));
     const qty = `x${item.quantity}`;
     const amount = item.price > 0 ? formatCurrency(item.price * item.quantity) : "";
     lines.push(amount ? row(qty, amount) : qty);
@@ -210,7 +212,7 @@ function toReceiptLines(data: ReceiptData, paperWidth: PaperWidth): string[] {
   }
 
   if (data.paymentMethod) lines.push(row("Paiement", paymentLabel(data.paymentMethod)));
-  if (data.notes) lines.push(`Note: ${data.notes}`);
+  if (data.notes) lines.push(clamp(`Note: ${data.notes}`));
 
   lines.push(dashes);
   lines.push("Merci de votre visite !");

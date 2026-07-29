@@ -79,12 +79,13 @@ body {
 /* Thermal receipt (58mm / 80mm) — larger readable text */
 .receipt-thermal {
   box-sizing: border-box;
-  width: 54mm;
-  max-width: 54mm;
+  width: 55mm;
+  max-width: 55mm;
   height: fit-content;
   min-height: 0;
   margin: 0;
-  padding: 2mm 2mm 2.5mm;
+  /* padding = the printed margin (drivers often ignore @page margins) */
+  padding: 3mm 3.5mm 4mm;
   background: #fff;
   color: #000;
   font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Menlo, monospace;
@@ -227,15 +228,17 @@ body {
   font-weight: 700;
 }
 
-/* Paper width variants */
+/* Paper width variants — width includes the padding (border-box) */
 .receipt-thermal.paper-58 {
-  width: 54mm;
-  max-width: 54mm;
+  width: 55mm;
+  max-width: 55mm;
+  padding: 3mm 3.5mm 4mm;
 }
 
 .receipt-thermal.paper-80 {
-  width: 72mm;
-  max-width: 72mm;
+  width: 76mm;
+  max-width: 76mm;
+  padding: 3mm 4.5mm 4mm;
 }
 
 @page {
@@ -292,7 +295,6 @@ body {
     top: auto !important;
     height: auto !important;
     min-height: 0 !important;
-    padding: 1.5mm 1.5mm 2mm !important;
     page-break-after: avoid;
     page-break-inside: avoid;
     break-after: avoid;
@@ -300,16 +302,18 @@ body {
   }
 
   body.printing-receipt .print-only.receipt-thermal.paper-58 {
-    width: 54mm !important;
-    max-width: 54mm !important;
-    margin: 0 2mm !important;
+    width: 55mm !important;
+    max-width: 55mm !important;
+    margin: 0 1.5mm !important;
+    padding: 3mm 3.5mm 5mm !important;
     page: thermal-58mm;
   }
 
   body.printing-receipt .print-only.receipt-thermal.paper-80 {
-    width: 72mm !important;
-    max-width: 72mm !important;
-    margin: 0 4mm !important;
+    width: 76mm !important;
+    max-width: 76mm !important;
+    margin: 0 2mm !important;
+    padding: 3mm 4.5mm 5mm !important;
     page: thermal-80mm;
   }
 }

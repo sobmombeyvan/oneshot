@@ -4,4 +4,4 @@
 *.bat text eol=crlf
 *.cmd text eol=crlf
 *.ps1 text eol=crlf
-scripts/README-NO-NODE.txt text eol=crlf
+scripts/*.txt text eol=crlf

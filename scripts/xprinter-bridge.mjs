@@ -39,7 +39,11 @@ const BOLD_OFF = Buffer.from([0x1b, 0x45, 0x00]);
 const SIZE_NORMAL = Buffer.from([0x1d, 0x21, 0x00]);
 const SIZE_DOUBLE = Buffer.from([0x1d, 0x21, 0x11]); // double W+H
 const SIZE_TALL = Buffer.from([0x1d, 0x21, 0x01]); // double height
-const CUT_CMD = Buffer.from([0x1d, 0x56, 0x42, 0x03]);
+const CUT_CMD = Buffer.from([0x1d, 0x56, 0x42, 0x04]);
+const CODEPAGE_437 = Buffer.from([0x1b, 0x74, 0x00]);
+const LEFT_MARGIN = " ".repeat(
+  Math.max(0, Math.min(8, Number(process.env.XPRINTER_LEFT_PAD ?? 2) || 0)),
+);
 
 function readRawBody(req) {
   return new Promise((resolve, reject) => {
@@ -67,8 +71,15 @@ function parseBody(raw) {
 }
 
 function toEscPosBuffer(lines, openDrawer = false) {
-  const parts = [INIT_CMD, ALIGN_CENTER, SIZE_DOUBLE, BOLD_ON];
+  const parts = [INIT_CMD, CODEPAGE_437, Buffer.from("\n", "utf8"), ALIGN_CENTER, SIZE_DOUBLE, BOLD_ON];
   let phase = "header"; // header | body
+
+  // Centered lines get their margins for free; left-aligned lines are indented.
+  const write = (text) =>
+    parts.push(
+      Buffer.from(phase === "body" ? LEFT_MARGIN + text : text, "utf8"),
+      Buffer.from("\n", "utf8"),
+    );
 
   for (const line of lines) {
     const text = String(line ?? "").trimEnd();
@@ -79,25 +90,25 @@ function toEscPosBuffer(lines, openDrawer = false) {
         parts.push(BOLD_OFF, SIZE_NORMAL, ALIGN_LEFT);
         phase = "body";
       }
-      parts.push(Buffer.from(text, "utf8"), Buffer.from("\n", "utf8"));
+      write(text);
       continue;
     }
 
     if (phase === "header") {
       // Brand first line stays double; next header lines tall
-      parts.push(Buffer.from(text, "utf8"), Buffer.from("\n", "utf8"));
+      write(text);
       parts.push(SIZE_TALL, BOLD_OFF);
       continue;
     }
 
     if (text.startsWith("TOTAL")) {
       parts.push(SIZE_TALL, BOLD_ON);
-      parts.push(Buffer.from(text, "utf8"), Buffer.from("\n", "utf8"));
+      write(text);
       parts.push(SIZE_NORMAL, BOLD_OFF);
       continue;
     }
 
-    parts.push(Buffer.from(text, "utf8"), Buffer.from("\n", "utf8"));
+    write(text);
   }
 
   if (openDrawer) {

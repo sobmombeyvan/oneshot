@@ -6,7 +6,11 @@
 
 param(
   [string]$PrinterName = "",
-  [int]$Port = 0
+  [int]$Port = 0,
+  [int]$LeftPad = -1,
+  [switch]$Elevated,
+  [switch]$SelfTest,
+  [string]$DumpTo = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -17,6 +21,15 @@ if ([string]::IsNullOrEmpty($PrinterName)) {
 if ($Port -le 0) {
   if ($env:XPRINTER_BRIDGE_PORT) { $Port = [int]$env:XPRINTER_BRIDGE_PORT } else { $Port = 17809 }
 }
+# Left margin, in blank characters, added to every printed line
+if ($LeftPad -lt 0) {
+  if ($env:XPRINTER_LEFT_PAD) { $LeftPad = [int]$env:XPRINTER_LEFT_PAD } else { $LeftPad = 2 }
+}
+if ($LeftPad -lt 0) { $LeftPad = 0 }
+if ($LeftPad -gt 8) { $LeftPad = 8 }
+
+$script:LeftMargin = ""
+if ($LeftPad -gt 0) { $script:LeftMargin = "".PadRight($LeftPad, [char]' ') }
 
 # C# 2.0 compatible (no 'var', no LINQ) so it compiles on old PowerShell
 $csharp = @'
@@ -96,8 +109,12 @@ function Get-EscPosBytes {
   $stream = New-Object System.IO.MemoryStream
   $writer = New-Object System.IO.BinaryWriter($stream)
 
-  # init + center + double size + bold (header)
+  # init + PC437 codepage + top margin
   $writer.Write([byte[]](0x1B, 0x40))
+  $writer.Write([byte[]](0x1B, 0x74, 0x00))
+  $writer.Write([byte]0x0A)
+
+  # centered + double size + bold for the header block
   $writer.Write([byte[]](0x1B, 0x61, 0x01))
   $writer.Write([byte[]](0x1D, 0x21, 0x11))
   $writer.Write([byte[]](0x1B, 0x45, 0x01))
@@ -118,17 +135,21 @@ function Get-EscPosBytes {
       $phase = "body"
     }
 
+    # Centered lines already have margins; only indent left-aligned body lines
+    $out = $text
+    if ($phase -eq "body") { $out = $script:LeftMargin + $text }
+
     if ($phase -eq "body" -and $text.StartsWith("TOTAL")) {
       $writer.Write([byte[]](0x1D, 0x21, 0x01))
       $writer.Write([byte[]](0x1B, 0x45, 0x01))
-      $writer.Write($enc.GetBytes($text))
+      $writer.Write($enc.GetBytes($out))
       $writer.Write([byte]0x0A)
       $writer.Write([byte[]](0x1D, 0x21, 0x00))
       $writer.Write([byte[]](0x1B, 0x45, 0x00))
       continue
     }
 
-    $writer.Write($enc.GetBytes($text))
+    $writer.Write($enc.GetBytes($out))
     $writer.Write([byte]0x0A)
 
     if ($phase -eq "header") {
@@ -143,8 +164,8 @@ function Get-EscPosBytes {
     $writer.Write([byte[]](0x1B, 0x70, 0x01, 0x19, 0xFA))
   }
 
-  # partial cut with minimal feed
-  $writer.Write([byte[]](0x1D, 0x56, 0x42, 0x03))
+  # feed a little then partial cut
+  $writer.Write([byte[]](0x1D, 0x56, 0x42, 0x04))
   $writer.Flush()
 
   return $stream.ToArray()
@@ -225,40 +246,121 @@ function Test-IsAdmin {
   }
 }
 
+if ($SelfTest -or $DumpTo -ne "") {
+  $sample = @(
+    "ONE SHOT",
+    "Restaurant",
+    "----------------------------",
+    "Test marges / margin test",
+    "1 x Cafe expresso       500",
+    "2 x Jus d'orange      2 000",
+    "----------------------------",
+    "TOTAL                 2 500",
+    "Paiement: Especes",
+    "Merci et a bientot !"
+  )
+  $bytes = Get-EscPosBytes $sample $true
+
+  if ($DumpTo -ne "") {
+    [System.IO.File]::WriteAllBytes($DumpTo, $bytes)
+    Write-Host ("Wrote " + $bytes.Length + " bytes to " + $DumpTo)
+    exit 0
+  }
+
+  Write-Host ("Test ticket -> " + $PrinterName + " (left margin: " + $LeftPad + " chars)")
+  try {
+    Send-Raw $PrinterName $bytes
+    Write-Host "OK: ticket sent. The drawer should also have opened."
+  } catch {
+    Write-Host ("FAILED: " + $_.Exception.Message)
+    Write-Host ""
+    Write-Host "Printers installed on this PC:"
+    foreach ($n in (Get-PrinterNames)) { Write-Host ("  " + $n) }
+    Write-Host ""
+    Write-Host "Copy the exact name into start-xprinter-bridge.bat (XPRINTER_NAME)."
+  }
+  Write-Host ""
+  Write-Host "Press any key to close."
+  try { $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown") } catch { Start-Sleep -Seconds 15 }
+  exit 0
+}
+
+function Reserve-Url {
+  param([string]$Prefix)
+  # SDDL is language independent (WD = Everyone), unlike user=Everyone
+  # which does not exist on French/other localized Windows.
+  $args1 = 'http add urlacl url=' + $Prefix + ' sddl=D:(A;;GX;;;WD)'
+  try {
+    Start-Process -FilePath "netsh" -ArgumentList $args1 -Wait -WindowStyle Hidden
+  } catch { }
+
+  $me = $env:USERNAME
+  if ($env:USERDOMAIN) { $me = $env:USERDOMAIN + "\" + $env:USERNAME }
+  $args2 = 'http add urlacl url=' + $Prefix + ' user="' + $me + '"'
+  try {
+    Start-Process -FilePath "netsh" -ArgumentList $args2 -Wait -WindowStyle Hidden
+  } catch { }
+}
+
+function Get-ScriptPath {
+  if ($PSCommandPath) { return $PSCommandPath }
+  return $MyInvocation.ScriptName
+}
+
 $listener = New-Object System.Net.HttpListener
 $prefix = "http://127.0.0.1:" + $Port + "/"
 $listener.Prefixes.Add($prefix)
 
+$started = $false
 try {
   $listener.Start()
+  $started = $true
 } catch {
   Write-Host ""
-  Write-Host "ERROR: cannot open port $Port"
-  Write-Host $_.Exception.Message
+  Write-Host ("Port " + $Port + " is not open yet: " + $_.Exception.Message)
   Write-Host ""
+}
 
-  if (Test-IsAdmin) {
-    Write-Host "Reserving URL for all users, then retrying..."
-    $cmd = "http add urlacl url=" + $prefix + " user=Everyone"
-    Start-Process -FilePath "netsh" -ArgumentList $cmd -Wait -WindowStyle Hidden
-    try {
-      $listener.Start()
-      Write-Host "OK: URL reserved, bridge started."
-    } catch {
-      Write-Host "Still failing. Another program may already use port $Port."
-      Write-Host "Press any key to close."
-      $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
-      exit 1
-    }
-  } else {
-    Write-Host "FIX (Windows 7): right-click start-xprinter-bridge.bat > Run as administrator"
-    Write-Host "Or run this once in an admin prompt:"
-    Write-Host ("  netsh http add urlacl url=" + $prefix + " user=Everyone")
-    Write-Host ""
-    Write-Host "Press any key to close."
-    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
-    exit 1
+if (-not $started -and (Test-IsAdmin)) {
+  Write-Host "Reserving the local port (one time)..."
+  Reserve-Url $prefix
+  try {
+    $listener.Start()
+    $started = $true
+    Write-Host "OK: port reserved, bridge starting."
+  } catch {
+    Write-Host ("Still blocked: " + $_.Exception.Message)
   }
+}
+
+if (-not $started -and -not $Elevated -and -not (Test-IsAdmin)) {
+  # Ask for administrator once, then continue automatically
+  $self = Get-ScriptPath
+  if ($self) {
+    Write-Host "Asking for administrator rights (needed only the first time)..."
+    $psArgs = '-NoProfile -ExecutionPolicy Bypass -File "' + $self + '" -PrinterName "' + $PrinterName + '" -Port ' + $Port + ' -LeftPad ' + $LeftPad + ' -Elevated'
+    try {
+      Start-Process -FilePath "powershell.exe" -ArgumentList $psArgs -Verb RunAs
+      exit 0
+    } catch {
+      Write-Host "Administrator request was refused."
+    }
+  }
+}
+
+if (-not $started) {
+  Write-Host ""
+  Write-Host "COULD NOT START THE BRIDGE"
+  Write-Host ""
+  Write-Host "Fix it once, in an administrator command prompt:"
+  Write-Host ("  netsh http add urlacl url=" + $prefix + " sddl=D:(A;;GX;;;WD)")
+  Write-Host ""
+  Write-Host "Or right-click start-xprinter-bridge.bat > Run as administrator."
+  Write-Host "If the port is already in use, close the other bridge window first."
+  Write-Host ""
+  Write-Host "Press any key to close."
+  try { $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown") } catch { Start-Sleep -Seconds 20 }
+  exit 1
 }
 
 Write-Host ""

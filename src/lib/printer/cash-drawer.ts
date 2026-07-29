@@ -37,9 +37,13 @@ const DEFAULT_SETTINGS: CashDrawerSettings = {
   usbDirect: false,
 };
 
-/** Characters per line for ESC/POS font A */
+/**
+ * Characters per line for ESC/POS font A, minus a right margin.
+ * Full width is 32 (58mm) / 48 (80mm); we shrink it so the ticket
+ * is not printed edge to edge.
+ */
 export function charsPerLine(paperWidth: PaperWidth): number {
-  return paperWidth === 80 ? 42 : 32;
+  return paperWidth === 80 ? 42 : 28;
 }
 
 export function getCashDrawerSettings(): CashDrawerSettings {

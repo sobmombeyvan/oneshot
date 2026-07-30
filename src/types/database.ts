@@ -5,7 +5,8 @@ export type UserRole =
   | "kitchen"
   | "grill"
   | "bar"
-  | "store_keeper";
+  | "store_keeper"
+  | "client";
 
 export type CategoryType = "lounge" | "grill";
 export type ProductStatus = "active" | "inactive" | "discontinued";

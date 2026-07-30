@@ -3,6 +3,7 @@ import { createServerClient } from "@supabase/ssr";
 
 const PUBLIC_ROUTES = ["/login", "/register", "/forgot-password", "/verify-email"];
 const AUTH_ROUTES = ["/login", "/register", "/forgot-password"];
+const CLIENT_ALLOWED = ["/menu"];
 
 function isValidHttpUrl(value: string): boolean {
   try {
@@ -57,10 +58,37 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  if (user && AUTH_ROUTES.some((r) => pathname.startsWith(r))) {
-    const dashUrl = request.nextUrl.clone();
-    dashUrl.pathname = "/dashboard";
-    return NextResponse.redirect(dashUrl);
+  if (user) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    const role = profile?.role as string | undefined;
+
+    if (role === "client") {
+      const allowed =
+        CLIENT_ALLOWED.some((r) => pathname.startsWith(r)) ||
+        pathname === "/";
+      if (AUTH_ROUTES.some((r) => pathname.startsWith(r))) {
+        const menuUrl = request.nextUrl.clone();
+        menuUrl.pathname = "/menu";
+        return NextResponse.redirect(menuUrl);
+      }
+      if (!allowed) {
+        const menuUrl = request.nextUrl.clone();
+        menuUrl.pathname = "/menu";
+        return NextResponse.redirect(menuUrl);
+      }
+      return supabaseResponse;
+    }
+
+    if (AUTH_ROUTES.some((r) => pathname.startsWith(r))) {
+      const dashUrl = request.nextUrl.clone();
+      dashUrl.pathname = "/dashboard";
+      return NextResponse.redirect(dashUrl);
+    }
   }
 
   return supabaseResponse;

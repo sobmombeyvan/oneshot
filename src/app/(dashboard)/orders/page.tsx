@@ -117,10 +117,16 @@ export default function OrdersPage() {
             <Card key={order.id} className="hover:border-primary/20 transition-colors">
               <CardContent className="p-4 flex flex-wrap items-center justify-between gap-4">
                 <div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 flex-wrap">
                     <p className="font-bold">Table {order.table_number ?? "—"}</p>
                     {getStatusBadge(order.status)}
                     <Badge variant="secondary">#{order.id.slice(0, 8).toUpperCase()}</Badge>
+                    {order.notes?.toLowerCase().includes("tablette") && (
+                      <Badge variant="default">Tablette</Badge>
+                    )}
+                    {!order.payment_method && order.status === "pending" && (
+                      <Badge variant="warning">À encaisser</Badge>
+                    )}
                   </div>
                   <p className="text-xs text-off-white/40 mt-1">{formatDateTime(order.created_at)}</p>
                   <p className="text-xs text-off-white/50 mt-1">

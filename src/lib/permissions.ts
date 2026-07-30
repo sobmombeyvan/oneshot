@@ -56,6 +56,7 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     "dashboard.view", "inventory.view", "inventory.manage", "inventory.adjust",
     "suppliers.view", "purchases.view", "purchases.manage",
   ],
+  client: ["orders.create"],
 };
 
 export function hasPermission(role: UserRole, permission: Permission): boolean {
@@ -75,6 +76,11 @@ export function getDefaultRoute(role: UserRole): string {
     grill: "/grill",
     bar: "/bar",
     store_keeper: "/inventory",
+    client: "/menu",
   };
   return routes[role] ?? "/dashboard";
+}
+
+export function isClientRole(role: UserRole): boolean {
+  return role === "client";
 }

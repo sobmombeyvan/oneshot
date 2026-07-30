@@ -273,8 +273,8 @@ function POSPageInner() {
 
       {receipt && <ReceiptPrintView data={receipt} />}
 
-      <div className="flex-1 flex flex-col overflow-hidden no-print min-h-0 [@media(min-width:1024px)_and_(min-aspect-ratio:5/4)]:flex-row">
-        <div className="flex-1 flex flex-col p-3 lg:p-6 square:p-2 short:p-2 overflow-hidden min-h-0 square:flex-[1.15]">
+      <div className="flex-1 flex flex-col overflow-hidden no-print min-h-0 tablet-land:flex-row [@media(min-width:1024px)_and_(min-aspect-ratio:5/4)]:flex-row">
+        <div className="flex-1 flex flex-col p-3 lg:p-6 square:p-2 short:p-2 overflow-hidden min-h-0 square:flex-[1.15] tablet-land:flex-[1.2]">
           <div className="flex gap-2 lg:gap-3 mb-3 short:mb-2">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-off-white/40" />
@@ -325,13 +325,13 @@ function POSPageInner() {
             ))}
           </div>
 
-          <div className="flex-1 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 square:grid-cols-3 short:grid-cols-3 gap-2 lg:gap-3 content-start">
+          <div className="flex-1 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 tablet-land:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 square:grid-cols-3 short:grid-cols-3 gap-2 lg:gap-3 content-start">
             {products.map((product) => (
               <motion.button
                 key={product.id}
                 whileTap={{ scale: 0.95 }}
                 onClick={() => addToCart(product)}
-                className="p-2.5 lg:p-4 short:p-2 rounded-xl lg:rounded-2xl bg-charcoal/80 border border-smoked-brown/30 hover:border-primary/50 hover:bg-charcoal transition-all text-left group"
+                className="p-2.5 lg:p-4 short:p-2 rounded-xl lg:rounded-2xl bg-charcoal/80 border border-smoked-brown/30 hover:border-primary/50 hover:bg-charcoal transition-all text-left group min-h-[120px]"
               >
                 <div className="aspect-square rounded-lg lg:rounded-xl bg-smoked-brown/20 mb-2 short:mb-1.5 flex items-center justify-center max-h-28 short:max-h-20 square:max-h-24 mx-auto w-full">
                   {product.image ? (
@@ -351,7 +351,7 @@ function POSPageInner() {
           </div>
         </div>
 
-        <div className="w-full border-t border-smoked-brown/30 bg-charcoal/30 flex flex-col min-h-0 max-h-[42dvh] short:max-h-[45dvh] [@media(min-width:1024px)_and_(min-aspect-ratio:5/4)]:max-h-none [@media(min-width:1024px)_and_(min-aspect-ratio:5/4)]:max-w-md [@media(min-width:1024px)_and_(min-aspect-ratio:5/4)]:border-t-0 [@media(min-width:1024px)_and_(min-aspect-ratio:5/4)]:border-l">
+        <div className="w-full border-t border-smoked-brown/30 bg-charcoal/30 flex flex-col min-h-0 max-h-[42dvh] short:max-h-[45dvh] tablet-land:max-h-none tablet-land:w-[340px] tablet-land:border-t-0 tablet-land:border-l [@media(min-width:1024px)_and_(min-aspect-ratio:5/4)]:max-h-none [@media(min-width:1024px)_and_(min-aspect-ratio:5/4)]:max-w-md [@media(min-width:1024px)_and_(min-aspect-ratio:5/4)]:border-t-0 [@media(min-width:1024px)_and_(min-aspect-ratio:5/4)]:border-l">
           <div className="p-3 lg:p-4 short:p-2 border-b border-smoked-brown/30 shrink-0">
             <div className="flex items-center justify-between mb-2">
               <h2 className="font-[family-name:var(--font-cinzel)] text-base lg:text-lg font-bold">Panier</h2>

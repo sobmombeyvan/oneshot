@@ -45,6 +45,7 @@ export const USER_ROLES = [
   { value: "grill", label: "Grill" },
   { value: "bar", label: "Bar" },
   { value: "store_keeper", label: "Store Keeper" },
+  { value: "client", label: "Tablette client" },
 ] as const;
 
 export const NAV_ITEMS = [

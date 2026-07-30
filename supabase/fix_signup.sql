@@ -77,7 +77,18 @@ WHERE p.id IS NULL
   AND NOT EXISTS (SELECT 1 FROM public.profiles p2 WHERE p2.email = u.email)
 ON CONFLICT (id) DO NOTHING;
 
--- 4) Check
+-- 4) Optional: a profile row left behind by a deleted auth user keeps its email
+-- reserved (profiles.email is UNIQUE) and blocks re-creating that account.
+-- Review the list first, then uncomment the DELETE if the rows are junk.
+SELECT p.id, p.email, p.fullname, p.role, p.created_at AS orphan_profiles
+FROM public.profiles p
+LEFT JOIN auth.users u ON u.id = p.id
+WHERE u.id IS NULL;
+
+-- DELETE FROM public.profiles p
+-- WHERE NOT EXISTS (SELECT 1 FROM auth.users u WHERE u.id = p.id);
+
+-- 5) Check
 SELECT
   (SELECT COUNT(*) FROM auth.users) AS auth_users,
   (SELECT COUNT(*) FROM public.profiles) AS profiles;

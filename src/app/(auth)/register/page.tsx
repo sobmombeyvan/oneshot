@@ -14,12 +14,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { BRAND } from "@/lib/constants";
+import { authErrorMessage, MIN_PASSWORD_LENGTH, toAuthPassword } from "@/lib/auth";
 
 const registerSchema = z.object({
   fullname: z.string().min(2, "Nom requis"),
   email: z.string().email("Email invalide"),
   phone: z.string().optional(),
-  password: z.string().min(4, "Minimum 4 caractères"),
+  password: z.string().min(MIN_PASSWORD_LENGTH, `Minimum ${MIN_PASSWORD_LENGTH} caractères`),
   confirmPassword: z.string(),
 }).refine((d) => d.password === d.confirmPassword, {
   message: "Les mots de passe ne correspondent pas",
@@ -38,24 +39,36 @@ export default function RegisterPage() {
 
   const onSubmit = async (data: RegisterForm) => {
     setLoading(true);
-    const supabase = createClient();
-    const { error } = await supabase.auth.signUp({
-      email: data.email,
-      password: data.password,
-      options: {
-        data: { fullname: data.fullname, phone: data.phone },
-        emailRedirectTo: `${window.location.origin}/verify-email`,
-      },
-    });
+    try {
+      const supabase = createClient();
+      const { data: result, error } = await supabase.auth.signUp({
+        email: data.email,
+        password: toAuthPassword(data.password),
+        options: {
+          data: { fullname: data.fullname, phone: data.phone },
+          emailRedirectTo: `${window.location.origin}/verify-email`,
+        },
+      });
 
-    if (error) {
-      toast.error(error.message);
+      if (error) {
+        toast.error(authErrorMessage(error, "Impossible de créer le compte"));
+        return;
+      }
+
+      if (result.session) {
+        toast.success("Compte créé !");
+        router.push("/dashboard");
+        router.refresh();
+        return;
+      }
+
+      toast.success("Compte créé ! Vérifiez votre email.");
+      router.push("/verify-email");
+    } catch (err) {
+      toast.error(authErrorMessage(err, "Impossible de créer le compte"));
+    } finally {
       setLoading(false);
-      return;
     }
-
-    toast.success("Compte créé ! Vérifiez votre email.");
-    router.push("/verify-email");
   };
 
   return (

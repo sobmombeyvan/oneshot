@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { getDefaultRoute } from "@/lib/permissions";
 import { clearTabletSession, setTabletSession } from "@/lib/tablet";
+import { authErrorMessage, MIN_PASSWORD_LENGTH, toAuthPassword } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,7 +22,7 @@ import { cn } from "@/lib/utils";
 
 const loginSchema = z.object({
   email: z.string().email("Email invalide"),
-  password: z.string().min(4, "Minimum 4 caractères"),
+  password: z.string().min(MIN_PASSWORD_LENGTH, `Minimum ${MIN_PASSWORD_LENGTH} caractères`),
   tableNumber: z.string().optional(),
 });
 
@@ -54,13 +55,21 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const supabase = createClient();
-      const { error } = await supabase.auth.signInWithPassword({
+      let { error } = await supabase.auth.signInWithPassword({
         email: data.email,
-        password: data.password,
+        password: toAuthPassword(data.password),
       });
 
+      // Accounts created before short PINs existed still hold the raw password.
+      if (error && data.password !== toAuthPassword(data.password)) {
+        ({ error } = await supabase.auth.signInWithPassword({
+          email: data.email,
+          password: data.password,
+        }));
+      }
+
       if (error) {
-        toast.error(error.message);
+        toast.error(authErrorMessage(error, "Email ou mot de passe incorrect"));
         return;
       }
 
@@ -90,7 +99,7 @@ export default function LoginPage() {
       router.push(getDefaultRoute(role));
       router.refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erreur de connexion");
+      toast.error(authErrorMessage(err, "Erreur de connexion"));
     } finally {
       setLoading(false);
     }

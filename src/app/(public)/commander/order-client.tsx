@@ -187,10 +187,8 @@ export default function PublicOrderClient() {
             : Array.from({ length: 12 }, (_, i) => ({
                 id: String(i + 1),
                 number: i + 1,
-                capacity: 4,
                 status: "available" as const,
                 created_at: "",
-                updated_at: "",
               }))
           ).map((table) => (
             <button

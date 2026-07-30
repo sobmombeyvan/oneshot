@@ -6,7 +6,7 @@ import {
   LayoutDashboard, ShoppingCart, Package, ChefHat, Flame, Wine,
   ClipboardList, Grid3X3, Calendar, Users, Truck, ShoppingBag,
   FileText, BarChart3, Settings, LogOut, ChevronLeft,
-  Bell, Menu, X,
+  Menu, X,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { BRAND, NAV_ITEMS } from "@/lib/constants";
 import { canAccessRoute } from "@/lib/permissions";
 import { createClient } from "@/lib/supabase/client";
+import { NotificationBell } from "@/components/layout/notification-bell";
 import type { Profile } from "@/types/database";
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -189,10 +190,7 @@ export function Header({ title, subtitle }: { title: string; subtitle?: string }
           )}
         </div>
         <div className="flex items-center gap-3 shrink-0">
-          <button className="relative p-2 rounded-xl hover:bg-charcoal transition-colors">
-            <Bell className="h-5 w-5 text-off-white/60" />
-            <span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full" />
-          </button>
+          <NotificationBell />
         </div>
       </div>
     </header>

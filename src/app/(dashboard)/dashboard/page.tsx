@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
   DollarSign, TrendingUp, Package, Clock, AlertTriangle, ShoppingBag,
@@ -46,6 +46,7 @@ function StatCard({
 
 export default function DashboardPage() {
   const supabase = createClient();
+  const queryClient = useQueryClient();
   const [revenueData, setRevenueData] = useState<{ day: string; revenue: number }[]>([]);
 
   const { data: stats } = useQuery({
@@ -68,6 +69,7 @@ export default function DashboardPage() {
         .limit(5);
       return (data ?? []) as Order[];
     },
+    refetchInterval: 10000,
   });
 
   const { data: lowStockProducts = [] } = useQuery({
@@ -114,11 +116,13 @@ export default function DashboardPage() {
     const channel = supabase
       .channel("dashboard-realtime")
       .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, () => {
-        // Refetch handled by react-query refetchInterval
+        queryClient.invalidateQueries({ queryKey: ["recent-orders"] });
+        queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+        queryClient.invalidateQueries({ queryKey: ["top-products"] });
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [supabase]);
+  }, [supabase, queryClient]);
 
   const categoryData = [
     { name: "Lounge", value: 55 },

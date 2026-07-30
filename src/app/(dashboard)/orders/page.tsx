@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Printer, CheckCircle, XCircle, Eye } from "lucide-react";
@@ -36,7 +36,23 @@ export default function OrdersPage() {
         .limit(50);
       return (data ?? []) as OrderRow[];
     },
+    refetchInterval: 10000,
   });
+
+  useEffect(() => {
+    const channel = supabase
+      .channel("orders-page-realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, () => {
+        queryClient.invalidateQueries({ queryKey: ["all-orders"] });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "order_items" }, () => {
+        queryClient.invalidateQueries({ queryKey: ["all-orders"] });
+      })
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [supabase, queryClient]);
 
   const updateStatus = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: OrderStatus }) => {

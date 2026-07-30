@@ -72,9 +72,11 @@ body {
   animation: pulse-glow 2s ease-in-out infinite;
 }
 
-/* Square / near-square POS tablets (e.g. 1:1, 5:4) */
-@custom-variant square (@media (max-aspect-ratio: 5/4));
-@custom-variant short (@media (max-height: 820px));
+/* Square / near-square POS tablets (e.g. 1:1, 5:4).
+   The min-width guard matters: a phone held upright has an aspect ratio around
+   0.46, so without it every phone in portrait received the tablet layout. */
+@custom-variant square (@media (min-width: 768px) and (max-aspect-ratio: 5/4));
+@custom-variant short (@media (min-width: 768px) and (max-height: 820px));
 
 /* Thermal receipt (58mm / 80mm) — larger readable text */
 .receipt-thermal {

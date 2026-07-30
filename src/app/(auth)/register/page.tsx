@@ -6,7 +6,6 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { motion } from "framer-motion";
 import { Loader2, Mail, Lock, User, Phone } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
@@ -61,7 +60,7 @@ export default function RegisterPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-black p-4">
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md">
+      <div className="w-full max-w-md animate-fade-in">
         <div className="text-center mb-8">
           <h1 className="font-[family-name:var(--font-cinzel)] text-3xl font-bold text-primary">{BRAND.name}</h1>
           <p className="text-off-white/60 text-sm mt-1">Créer un compte</p>
@@ -126,7 +125,7 @@ export default function RegisterPage() {
             </p>
           </CardContent>
         </Card>
-      </motion.div>
+      </div>
     </div>
   );
 }

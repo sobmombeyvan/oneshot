@@ -6,7 +6,6 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { motion } from "framer-motion";
 import { Loader2, Mail, Lock, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
@@ -65,12 +64,10 @@ export default function LoginPage() {
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_#4A2B1A20_0%,_transparent_60%)]" />
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-primary/5 blur-[100px] rounded-full" />
 
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="w-full max-w-md relative z-10"
-      >
+      {/* CSS animation, not Framer Motion: a JS-driven `initial={{opacity:0}}`
+          is written into the server HTML, so the whole form stayed invisible on
+          any browser where the bundle fails to run. */}
+      <div className="w-full max-w-md relative z-10 animate-fade-in">
         <div className="text-center mb-8">
           <h1 className="font-[family-name:var(--font-cinzel)] text-4xl font-bold text-primary tracking-widest">
             {BRAND.name}
@@ -147,7 +144,7 @@ export default function LoginPage() {
             </p>
           </CardContent>
         </Card>
-      </motion.div>
+      </div>
     </div>
   );
 }

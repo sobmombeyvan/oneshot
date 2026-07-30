@@ -225,8 +225,8 @@ export function StationScreen({ title, subtitle, station, icon: Icon }: StationS
                             </Button>
                           )}
                           {col.key === "ready" && (
-                            <Button className="w-full" onClick={() => updateStatus.mutate({ orderId: order.id, status: "completed" })}>
-                              <Clock className="h-4 w-4" /> Servi & terminer
+                            <Button className="w-full" onClick={() => updateStatus.mutate({ orderId: order.id, status: "served" })}>
+                              <Clock className="h-4 w-4" /> Servi
                             </Button>
                           )}
                         </CardContent>

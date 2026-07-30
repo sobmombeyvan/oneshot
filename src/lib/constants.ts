@@ -22,12 +22,12 @@ export const PAYMENT_METHODS = [
 ] as const;
 
 export const ORDER_STATUSES = [
-  { value: "pending", label: "Pending", color: "bg-yellow-500/20 text-yellow-400" },
-  { value: "preparing", label: "Preparing", color: "bg-orange-500/20 text-orange-400" },
-  { value: "ready", label: "Ready", color: "bg-green-500/20 text-green-400" },
-  { value: "served", label: "Served", color: "bg-blue-500/20 text-blue-400" },
-  { value: "completed", label: "Completed", color: "bg-primary/20 text-primary" },
-  { value: "cancelled", label: "Cancelled", color: "bg-red-500/20 text-red-400" },
+  { value: "pending", label: "En attente", color: "bg-yellow-500/20 text-yellow-400" },
+  { value: "preparing", label: "En préparation", color: "bg-orange-500/20 text-orange-400" },
+  { value: "ready", label: "Prête", color: "bg-green-500/20 text-green-400" },
+  { value: "served", label: "Servie", color: "bg-blue-500/20 text-blue-400" },
+  { value: "completed", label: "Payée", color: "bg-primary/20 text-primary" },
+  { value: "cancelled", label: "Annulée", color: "bg-red-500/20 text-red-400" },
 ] as const;
 
 export const TABLE_STATUSES = [

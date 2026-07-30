@@ -5,21 +5,18 @@ import { useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Search, ScanBarcode, Plus, Minus, Trash2, CreditCard, Banknote,
-  Smartphone, Printer, Percent, X, ShoppingCart,
+  Search, ScanBarcode, Plus, Minus, Trash2, Printer, Percent, X, ShoppingCart,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Header } from "@/components/layout/sidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ReceiptPrintView, printReceipt, type ReceiptData } from "@/components/print/receipt";
-import { openCashDrawer, shouldOpenCashDrawer } from "@/lib/printer/cash-drawer";
 import { createClient } from "@/lib/supabase/client";
-import { formatCurrency, calculateTotal, generateInvoiceNumber, cn } from "@/lib/utils";
-import { VAT_RATE, PAYMENT_METHODS } from "@/lib/constants";
-import type { Product, Category, CartItem, PaymentMethod, RestaurantTable } from "@/types/database";
+import { formatCurrency, calculateTotal, cn } from "@/lib/utils";
+import { VAT_RATE } from "@/lib/constants";
+import type { Product, Category, CartItem, RestaurantTable } from "@/types/database";
 
 const ALLOWED_CATEGORY_TYPES = ["lounge", "grill"] as const;
 
@@ -40,8 +37,6 @@ function POSPageInner() {
   const [tableNumber, setTableNumber] = useState<number | null>(null);
   const [tableId, setTableId] = useState<string | null>(null);
   const [discount, setDiscount] = useState(0);
-  const [showPayment, setShowPayment] = useState(false);
-  const [selectedPayment, setSelectedPayment] = useState<PaymentMethod>("cash");
   const [receipt, setReceipt] = useState<ReceiptData | null>(null);
 
   useEffect(() => {
@@ -125,6 +120,7 @@ function POSPageInner() {
         resolvedTableId = match?.id ?? null;
       }
 
+      // Create the order only — no invoice / stock until payment is validated
       const { data: order, error: orderError } = await supabase
         .from("orders")
         .insert({
@@ -132,11 +128,12 @@ function POSPageInner() {
           table_id: resolvedTableId,
           cashier_id: user.id,
           status: "pending",
-          payment_method: selectedPayment,
+          payment_method: null,
           subtotal: totals.subtotal,
           discount: totals.discount,
           tax: totals.tax,
           total: totals.total,
+          notes: "Commande caisse — à encaisser",
         })
         .select()
         .single();
@@ -154,29 +151,6 @@ function POSPageInner() {
       const { error: itemsError } = await supabase.from("order_items").insert(orderItems);
       if (itemsError) throw itemsError;
 
-      const invoiceNumber = generateInvoiceNumber();
-      await supabase.from("invoices").insert({
-        invoice_number: invoiceNumber,
-        order_id: order.id,
-        subtotal: totals.subtotal,
-        discount: totals.discount,
-        tax: totals.tax,
-        total: totals.total,
-        payment_method: selectedPayment,
-        status: "paid",
-        cashier_id: user.id,
-      });
-
-      for (const item of cart) {
-        await supabase.from("stock_movements").insert({
-          product_id: item.product.id,
-          type: "OUT",
-          quantity: item.quantity,
-          reason: `POS Order #${order.id.slice(0, 8)}`,
-          user_id: user.id,
-        });
-      }
-
       if (resolvedTableId) {
         await supabase
           .from("restaurant_tables")
@@ -186,7 +160,6 @@ function POSPageInner() {
 
       return {
         order,
-        invoiceNumber,
         items: cart.map((i) => ({
           name: i.product.name,
           quantity: i.quantity,
@@ -194,10 +167,9 @@ function POSPageInner() {
         })),
       };
     },
-    onSuccess: ({ order, invoiceNumber, items }) => {
+    onSuccess: ({ order, items }) => {
       const receiptData: ReceiptData = {
-        title: "Ticket de caisse",
-        invoiceNumber,
+        title: "Bon de commande",
         orderId: order.id,
         tableNumber,
         createdAt: order.created_at ?? new Date().toISOString(),
@@ -206,34 +178,29 @@ function POSPageInner() {
         discount: totals.discount,
         tax: totals.tax,
         total: totals.total,
-        paymentMethod: selectedPayment,
+        paymentMethod: null,
+        notes: "À encaisser — pas encore en comptabilité",
       };
       setReceipt(receiptData);
-      toast.success("Commande envoyée en cuisine !");
+      toast.success("Commande créée. Validez le paiement dans Commandes pour la compta.");
       setCart([]);
       setDiscount(0);
       setTableNumber(null);
       setTableId(null);
-      setShowPayment(false);
       queryClient.invalidateQueries({ queryKey: ["products-pos"] });
       queryClient.invalidateQueries({ queryKey: ["restaurant-tables"] });
       queryClient.invalidateQueries({ queryKey: ["all-orders"] });
-      queryClient.invalidateQueries({ queryKey: ["invoices"] });
-      const needsDrawer = shouldOpenCashDrawer(selectedPayment);
       void printReceipt(receiptData).then((printResult) => {
         if (printResult.via === "bridge") {
-          toast.success(needsDrawer ? "Ticket imprime + tiroir ouvert" : "Ticket imprime");
+          toast.success("Bon imprimé");
           return;
         }
-        // Browser print means the bridge refused or is not reachable: show why,
-        // otherwise the cashier cannot tell the printer setup is broken.
         toast.warning(
           printResult.error
             ? `Impression navigateur — ${printResult.error}`
             : "Impression navigateur: bridge XPrinter indisponible",
           { duration: 8000 }
         );
-        if (needsDrawer) void openCashDrawer();
       });
     },
     onError: (err: Error) => toast.error(err.message),
@@ -258,10 +225,6 @@ function POSPageInner() {
     searchRef.current?.focus();
   }, []);
 
-  const paymentIcons: Record<string, React.ComponentType<{ className?: string }>> = {
-    cash: Banknote, orange_money: Smartphone, mtn_momo: Smartphone, bank_card: CreditCard,
-  };
-
   const selectTable = (t: RestaurantTable) => {
     setTableNumber(t.number);
     setTableId(t.id);
@@ -269,7 +232,10 @@ function POSPageInner() {
 
   return (
     <div className="h-dvh flex flex-col overflow-hidden">
-      <Header title="Point de Vente" subtitle="Créer une commande — envoi auto lounge (bar) / grill" />
+      <Header
+        title="Point de Vente"
+        subtitle="Créer commande / reçu — la compta n'enregistre qu'après validation du paiement"
+      />
 
       {receipt && <ReceiptPrintView data={receipt} />}
 
@@ -457,50 +423,24 @@ function POSPageInner() {
 
             <div className="grid grid-cols-2 gap-2">
               <Button variant="outline" onClick={() => { setCart([]); setDiscount(0); }} disabled={cart.length === 0}>
-                <X className="h-4 w-4" /> Annuler
+                <X className="h-4 w-4" /> Vider
               </Button>
-              <Button size="lg" className="short:h-10" onClick={() => setShowPayment(true)} disabled={cart.length === 0}>
-                Payer
+              <Button
+                size="lg"
+                className="short:h-10"
+                onClick={() => checkoutMutation.mutate()}
+                disabled={cart.length === 0 || checkoutMutation.isPending}
+              >
+                <Printer className="h-4 w-4" />
+                {checkoutMutation.isPending ? "Envoi..." : "Envoyer commande"}
               </Button>
             </div>
+            <p className="text-[11px] text-center text-off-white/40">
+              Pas encore en comptabilité — validez le paiement dans Commandes
+            </p>
           </div>
         </div>
       </div>
-
-      <Dialog open={showPayment} onOpenChange={setShowPayment}>
-        <DialogContent className="max-w-md no-print">
-          <DialogHeader>
-            <DialogTitle>Paiement — {formatCurrency(totals.total)}</DialogTitle>
-          </DialogHeader>
-          <div className="grid grid-cols-2 gap-3 py-4">
-            {PAYMENT_METHODS.map((method) => {
-              const Icon = paymentIcons[method.value] ?? CreditCard;
-              return (
-                <button
-                  key={method.value}
-                  onClick={() => setSelectedPayment(method.value as PaymentMethod)}
-                  className={cn(
-                    "flex flex-col items-center gap-2 p-4 rounded-xl border transition-all",
-                    selectedPayment === method.value
-                      ? "border-primary bg-primary/10 text-primary"
-                      : "border-smoked-brown/30 text-off-white/60 hover:border-primary/30"
-                  )}
-                >
-                  <Icon className="h-6 w-6" />
-                  <span className="text-xs font-medium">{method.label}</span>
-                </button>
-              );
-            })}
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Button variant="outline" onClick={() => setShowPayment(false)}>Retour</Button>
-            <Button onClick={() => checkoutMutation.mutate()} disabled={checkoutMutation.isPending}>
-              <Printer className="h-4 w-4" />
-              {checkoutMutation.isPending ? "Traitement..." : "Confirmer & Imprimer"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

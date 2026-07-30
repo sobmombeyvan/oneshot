@@ -121,8 +121,13 @@ export default function OrdersPage() {
                     <p className="font-bold">Table {order.table_number ?? "—"}</p>
                     {getStatusBadge(order.status)}
                     <Badge variant="secondary">#{order.id.slice(0, 8).toUpperCase()}</Badge>
-                    {order.notes?.toLowerCase().includes("tablette") && (
-                      <Badge variant="default">Tablette</Badge>
+                    {(order.notes?.toLowerCase().includes("tablette") ||
+                      order.notes?.toLowerCase().includes("menu public")) && (
+                      <Badge variant="default">
+                        {order.notes?.toLowerCase().includes("menu public")
+                          ? "Menu public"
+                          : "Tablette"}
+                      </Badge>
                     )}
                     {!order.payment_method && order.status === "pending" && (
                       <Badge variant="warning">À encaisser</Badge>

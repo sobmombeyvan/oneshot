@@ -148,8 +148,9 @@ export function StationScreen({ title, subtitle, station, icon: Icon }: StationS
       <div className="p-4 lg:p-6 no-print">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-smoked-brown/30 bg-charcoal/40 px-4 py-3">
           <p className="text-sm text-off-white/70">
-            Les commandes viennent du <strong className="text-primary">POS</strong> ou des{" "}
-            <strong className="text-primary">tablettes clients</strong>, puis apparaissent ici automatiquement.
+            Les commandes viennent du <strong className="text-primary">POS</strong>, du{" "}
+            <strong className="text-primary">menu public</strong> ou des{" "}
+            <strong className="text-primary">tablettes</strong>, puis apparaissent ici.
           </p>
           <Button asChild size="sm">
             <Link href="/pos">
@@ -184,8 +185,13 @@ export function StationScreen({ title, subtitle, station, icon: Icon }: StationS
                             <div>
                               <div className="flex items-center gap-2 flex-wrap">
                                 <p className="font-bold text-lg">Table {order.table_number ?? "—"}</p>
-                                {order.notes?.toLowerCase().includes("tablette") && (
-                                  <Badge variant="default">Tablette</Badge>
+                                {(order.notes?.toLowerCase().includes("tablette") ||
+                                  order.notes?.toLowerCase().includes("menu public")) && (
+                                  <Badge variant="default">
+                                    {order.notes?.toLowerCase().includes("menu public")
+                                      ? "Menu public"
+                                      : "Tablette"}
+                                  </Badge>
                                 )}
                               </div>
                               <p className="text-xs text-off-white/40">#{order.id.slice(0, 8).toUpperCase()} · {formatDateTime(order.created_at)}</p>

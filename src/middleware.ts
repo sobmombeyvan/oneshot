@@ -1,9 +1,15 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
-const PUBLIC_ROUTES = ["/login", "/register", "/forgot-password", "/verify-email"];
+const PUBLIC_ROUTES = [
+  "/login",
+  "/register",
+  "/forgot-password",
+  "/verify-email",
+  "/commander",
+];
 const AUTH_ROUTES = ["/login", "/register", "/forgot-password"];
-const CLIENT_ALLOWED = ["/menu"];
+const CLIENT_ALLOWED = ["/menu", "/commander"];
 
 function isValidHttpUrl(value: string): boolean {
   try {

@@ -245,6 +245,13 @@ export default function LoginPage() {
                 </Link>
               </p>
             )}
+
+            <p className="text-center text-sm text-off-white/50 mt-4">
+              Client ?{" "}
+              <Link href="/commander" className="text-primary hover:underline">
+                Voir le menu &amp; commander
+              </Link>
+            </p>
           </CardContent>
         </Card>
       </div>

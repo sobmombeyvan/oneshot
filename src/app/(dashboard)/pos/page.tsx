@@ -35,7 +35,7 @@ const ALLOWED_CATEGORY_TYPES = ["lounge", "grill"] as const;
 
 function getStation(categoryType?: string): string {
   if (categoryType === "lounge") return "bar";
-  return "grill";
+  return "kitchen";
 }
 
 function POSPageInner() {

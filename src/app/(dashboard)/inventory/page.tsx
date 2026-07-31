@@ -761,7 +761,7 @@ export default function InventoryPage() {
                 }
               >
                 <option value="lounge">Lounge</option>
-                <option value="grill">Grill</option>
+                <option value="grill">Cuisine / Grill</option>
               </select>
             </div>
             <Button

@@ -7,7 +7,7 @@ export default function KitchenPage() {
   return (
     <StationScreen
       title="Cuisine"
-      subtitle="Commandes en direct"
+      subtitle="Cuisine & grill — une seule file"
       station="kitchen"
       icon={ChefHat}
     />

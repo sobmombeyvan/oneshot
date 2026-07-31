@@ -162,7 +162,7 @@ export default function ClientMenuPage() {
         product_id: item.product.id,
         quantity: item.quantity,
         price: item.product.selling_price,
-        station: item.product.category?.type === "lounge" ? "bar" : "grill",
+        station: item.product.category?.type === "lounge" ? "bar" : "kitchen",
       }));
 
       const { error: itemsError } = await supabase.from("order_items").insert(items);
@@ -466,7 +466,7 @@ export default function ClientMenuPage() {
                 )}
               </Button>
               <p className="text-center text-xs text-off-white/40">
-                Paiement à la caisse · cuisine / grill / bar notifiés
+                Paiement à la caisse · cuisine / bar notifiés
               </p>
             </div>
           </aside>

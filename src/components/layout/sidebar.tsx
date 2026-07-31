@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  LayoutDashboard, ShoppingCart, Package, ChefHat, Flame, Wine,
+  LayoutDashboard, ShoppingCart, Package, ChefHat, Wine,
   ClipboardList, Grid3X3, Calendar, Users, Truck, ShoppingBag,
   FileText, BarChart3, Settings, LogOut, ChevronLeft,
   Menu, X, Banknote,
@@ -18,7 +18,7 @@ import { NotificationBell } from "@/components/layout/notification-bell";
 import type { Profile } from "@/types/database";
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
-  LayoutDashboard, ShoppingCart, Package, ChefHat, Flame, Wine,
+  LayoutDashboard, ShoppingCart, Package, ChefHat, Wine,
   ClipboardList, Grid3X3, Calendar, Users, Truck, ShoppingBag,
   FileText, BarChart3, Settings, Banknote,
 };

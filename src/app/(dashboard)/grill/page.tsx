@@ -1,15 +1,15 @@
 "use client";
 
-import { Flame } from "lucide-react";
-import { StationScreen } from "@/components/kitchen/station-screen";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
-export default function GrillPage() {
+/** Grill = Cuisine — keep URL for old bookmarks */
+export default function GrillRedirectPage() {
+  const router = useRouter();
+  useEffect(() => {
+    router.replace("/kitchen");
+  }, [router]);
   return (
-    <StationScreen
-      title="Grill"
-      subtitle="Commandes grill en direct"
-      station="grill"
-      icon={Flame}
-    />
+    <div className="p-8 text-off-white/40">Redirection vers Cuisine…</div>
   );
 }

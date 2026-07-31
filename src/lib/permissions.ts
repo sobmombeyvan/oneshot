@@ -55,7 +55,8 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     "cash.view", "cash.manage",
   ],
   kitchen: ["kitchen.view", "orders.view", "orders.update"],
-  grill: ["grill.view", "orders.view", "orders.update"],
+  // Same as kitchen — restaurant treats grill and cuisine as one station
+  grill: ["kitchen.view", "grill.view", "orders.view", "orders.update"],
   bar: ["bar.view", "orders.view", "orders.update"],
   store_keeper: [
     "dashboard.view", "inventory.view", "inventory.manage", "inventory.adjust",
@@ -78,7 +79,7 @@ export function getDefaultRoute(role: UserRole): string {
     manager: "/dashboard",
     cashier: "/pos",
     kitchen: "/kitchen",
-    grill: "/grill",
+    grill: "/kitchen",
     bar: "/bar",
     store_keeper: "/inventory",
     client: "/menu",

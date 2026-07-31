@@ -70,7 +70,14 @@ export function StationScreen({ title, subtitle, station, icon: Icon }: StationS
       return ((data ?? []) as KitchenOrder[]).map((order) => ({
         ...order,
         order_items: (order.order_items ?? []).filter((item) => {
-          if (station === "kitchen") return item.station === "kitchen" || !item.station;
+          // Cuisine = kitchen + grill (same station in this restaurant)
+          if (station === "kitchen") {
+            return (
+              item.station === "kitchen" ||
+              item.station === "grill" ||
+              !item.station
+            );
+          }
           return item.station === station;
         }),
       })).filter((order) => order.order_items.length > 0);

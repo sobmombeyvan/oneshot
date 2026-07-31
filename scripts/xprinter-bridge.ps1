@@ -397,10 +397,9 @@ function Get-EscPosBytes {
     $writer.Write([byte]0x0A)
 
     if ($phase -eq "header") {
-      # Only the brand line is enlarged; subtitle and title stay normal size
-      # so long amounts always fit on one line.
+      # Only the brand line is enlarged; subtitle and title stay normal size so
+      # they never wrap. Bold stays on until the rule closes the header.
       $writer.Write([byte[]](0x1D, 0x21, 0x00))
-      $writer.Write([byte[]](0x1B, 0x45, 0x00))
     }
   }
 

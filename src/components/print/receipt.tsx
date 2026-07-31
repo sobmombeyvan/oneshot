@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { BRAND, VAT_RATE } from "@/lib/constants";
 import {
   bridgeFetch,
@@ -62,18 +63,37 @@ function padRow(left: string, right: string, width: number) {
   return `${l}${" ".repeat(spaces)}${right}`;
 }
 
-export function ReceiptPrintView({ data, id = "receipt-print" }: { data: ReceiptData; id?: string }) {
+/** Centre a line inside the printer width (body lines are left-aligned) */
+function padCenter(text: string, width: number) {
+  const safe = toThermalText(text).slice(0, width);
+  const left = Math.max(0, Math.floor((width - safe.length) / 2));
+  return " ".repeat(left) + safe;
+}
+
+export function ReceiptPrintView({
+  data,
+  id = "receipt-print",
+  preview = false,
+}: {
+  data: ReceiptData;
+  id?: string;
+  preview?: boolean;
+}) {
   const isInvoice = Boolean(data.invoiceNumber) || data.title?.toLowerCase().includes("facture");
   const [paperWidth, setPaperWidth] = useState<PaperWidth>(58);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     setPaperWidth(getCashDrawerSettings().paperWidth);
+    setMounted(true);
   }, []);
 
-  return (
+  const ticket = (
     <div
       id={id}
-      className={`print-only receipt-thermal hidden ${paperWidth === 80 ? "paper-80" : "paper-58"}`}
+      className={`${preview ? "receipt-preview" : "print-only"} receipt-thermal ${
+        paperWidth === 80 ? "paper-80" : "paper-58"
+      }`}
     >
       <div className="receipt-header">
         <h1 className="receipt-brand">{BRAND.name}</h1>
@@ -200,8 +220,15 @@ export function ReceiptPrintView({ data, id = "receipt-print" }: { data: Receipt
 
       <div className="receipt-rule" />
       <p className="receipt-thanks">Merci de votre visite !</p>
+      <p className="receipt-foot">{BRAND.name}</p>
     </div>
   );
+
+  if (preview) return ticket;
+  // Printed through a portal on <body>: as a direct child it can be the only
+  // visible element, which is what keeps it centred and free of blank pages.
+  if (!mounted) return null;
+  return createPortal(<div className="print-root">{ticket}</div>, document.body);
 }
 
 function toReceiptLines(data: ReceiptData, paperWidth: PaperWidth): string[] {
@@ -216,10 +243,18 @@ function toReceiptLines(data: ReceiptData, paperWidth: PaperWidth): string[] {
     const safe = toThermalText(text);
     return safe.length > width ? safe.slice(0, width - 1) + "." : safe;
   };
+  // The bridge prints the first line in double width, so only half the
+  // characters fit on the brand line.
+  const brandClamp = (text: string) => {
+    const safe = toThermalText(text);
+    const half = Math.floor(width / 2);
+    return safe.length > half ? safe.slice(0, half) : safe;
+  };
   const lines: string[] = [];
 
-  lines.push(clamp(BRAND.name.toUpperCase()));
-  lines.push(clamp(BRAND.subtitle));
+  // Header lines are centred by the printer itself, no padding needed here
+  lines.push(brandClamp(BRAND.name.toUpperCase()));
+  lines.push(clamp(BRAND.subtitle.toUpperCase()));
   lines.push(clamp(isInvoice ? "FACTURE" : (data.title?.toUpperCase() ?? "TICKET")));
   lines.push(dashes);
 
@@ -263,7 +298,8 @@ function toReceiptLines(data: ReceiptData, paperWidth: PaperWidth): string[] {
   if (data.notes) lines.push(clamp(`Note: ${data.notes}`));
 
   lines.push(dashes);
-  lines.push(clamp("Merci de votre visite !"));
+  lines.push(padCenter("Merci de votre visite !", width));
+  lines.push(padCenter(BRAND.name, width));
   return lines;
 }
 

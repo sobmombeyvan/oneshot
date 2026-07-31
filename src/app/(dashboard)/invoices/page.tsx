@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Printer, FileText } from "lucide-react";
+import { Printer, FileText, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { Header } from "@/components/layout/sidebar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ReceiptPrintView, printReceipt, type ReceiptData } from "@/components/print/receipt";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
@@ -33,6 +34,7 @@ const METHOD_LABELS: Record<string, string> = {
 export default function InvoicesPage() {
   const supabase = createClient();
   const [printData, setPrintData] = useState<ReceiptData | null>(null);
+  const [previewData, setPreviewData] = useState<ReceiptData | null>(null);
 
   const { data: invoices = [] } = useQuery({
     queryKey: ["invoices"],
@@ -48,14 +50,14 @@ export default function InvoicesPage() {
     },
   });
 
-  const handlePrint = (invoice: InvoiceWithOrder) => {
+  const buildReceipt = (invoice: InvoiceWithOrder): ReceiptData => {
     const items = (invoice.order?.order_items ?? []).map((item) => ({
       name: item.product?.name ?? "Article",
       quantity: item.quantity,
       price: item.price,
     }));
 
-    const receiptData: ReceiptData = {
+    return {
       title: "Facture",
       invoiceNumber: invoice.invoice_number,
       orderId: invoice.order_id ?? undefined,
@@ -76,6 +78,10 @@ export default function InvoicesPage() {
       amountReceived: invoice.amount_received,
       changeDue: invoice.change_due,
     };
+  };
+
+  const handlePrint = (invoice: InvoiceWithOrder) => {
+    const receiptData = buildReceipt(invoice);
     setPrintData(receiptData);
     toast.success(`Impression ${invoice.invoice_number}`);
     void printReceipt(receiptData);
@@ -131,6 +137,13 @@ export default function InvoicesPage() {
                     <p className="font-bold text-primary">{formatCurrency(invoice.total)}</p>
                     <Badge variant="secondary" className="capitalize">{invoice.status}</Badge>
                   </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setPreviewData(buildReceipt(invoice))}
+                  >
+                    <Eye className="h-4 w-4" /> Aperçu
+                  </Button>
                   <Button variant="outline" size="sm" onClick={() => handlePrint(invoice)}>
                     <Printer className="h-4 w-4" /> Imprimer
                   </Button>
@@ -140,6 +153,34 @@ export default function InvoicesPage() {
           ))
         )}
       </div>
+
+      <Dialog open={!!previewData} onOpenChange={(open) => !open && setPreviewData(null)}>
+        <DialogContent className="no-print max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Aperçu professionnel de la facture</DialogTitle>
+          </DialogHeader>
+          {previewData && (
+            <>
+              <div className="rounded-xl bg-black/40 p-4 overflow-auto">
+                <ReceiptPrintView
+                  data={previewData}
+                  id="invoice-preview"
+                  preview
+                />
+              </div>
+              <Button
+                className="w-full h-12"
+                onClick={() => {
+                  setPrintData(previewData);
+                  void printReceipt(previewData);
+                }}
+              >
+                <Printer className="h-4 w-4" /> Imprimer cette facture
+              </Button>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

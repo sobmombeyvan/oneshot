@@ -309,6 +309,13 @@ export default function DashboardPage() {
                     <div className="text-right">
                       <p className="text-sm font-medium text-primary">{formatCurrency(order.total)}</p>
                       <Badge variant="secondary" className="text-[10px]">{order.status}</Badge>
+                      {!order.payment_method &&
+                        order.status !== "cancelled" &&
+                        order.status !== "completed" && (
+                          <Button asChild size="sm" className="mt-2 h-8">
+                            <Link href={`/pos?order=${order.id}`}>Encaisser</Link>
+                          </Button>
+                        )}
                     </div>
                   </div>
                 ))

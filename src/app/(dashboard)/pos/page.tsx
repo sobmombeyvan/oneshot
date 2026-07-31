@@ -6,17 +6,30 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Search, ScanBarcode, Plus, Minus, Trash2, Printer, Percent, X, ShoppingCart,
+  ClipboardList, CheckCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Header } from "@/components/layout/sidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ReceiptPrintView, printReceipt, type ReceiptData } from "@/components/print/receipt";
+import { SettlePaymentDialog } from "@/components/orders/settle-payment-dialog";
+import { openCashDrawer, shouldOpenCashDrawer } from "@/lib/printer/cash-drawer";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency, calculateTotal, cn } from "@/lib/utils";
 import { VAT_RATE } from "@/lib/constants";
-import type { Product, Category, CartItem, RestaurantTable } from "@/types/database";
+import type {
+  Product,
+  Category,
+  CartItem,
+  RestaurantTable,
+  Order,
+  OrderItem,
+  PaymentSplit,
+} from "@/types/database";
+import type { SettlePaymentResult } from "@/lib/orders/settle";
 
 const ALLOWED_CATEGORY_TYPES = ["lounge", "grill"] as const;
 
@@ -38,6 +51,12 @@ function POSPageInner() {
   const [tableId, setTableId] = useState<string | null>(null);
   const [discount, setDiscount] = useState(0);
   const [receipt, setReceipt] = useState<ReceiptData | null>(null);
+  const [showPending, setShowPending] = useState(false);
+  const [orderToSettle, setOrderToSettle] = useState<PendingOrder | null>(null);
+
+  type PendingOrder = Order & {
+    order_items?: (OrderItem & { product?: { name: string } })[];
+  };
 
   useEffect(() => {
     const t = searchParams.get("table");
@@ -81,6 +100,91 @@ function POSPageInner() {
       return (data ?? []) as Product[];
     },
   });
+
+  const { data: pendingOrders = [] } = useQuery({
+    queryKey: ["pos-pending-orders"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("orders")
+        .select("*, order_items(*, product:products(name))")
+        .in("status", ["pending", "preparing", "ready", "served"])
+        .is("payment_method", null)
+        .order("created_at", { ascending: true })
+        .limit(30);
+      if (error) throw error;
+      return (data ?? []) as PendingOrder[];
+    },
+    refetchInterval: 5000,
+  });
+
+  useEffect(() => {
+    const orderId = searchParams.get("order");
+    if (!orderId || orderToSettle) return;
+    const match = pendingOrders.find((order) => order.id === orderId);
+    if (match) setOrderToSettle(match);
+  }, [searchParams, pendingOrders, orderToSettle]);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel("pos-pending-orders")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "orders" },
+        () => queryClient.invalidateQueries({ queryKey: ["pos-pending-orders"] })
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "order_items" },
+        () => queryClient.invalidateQueries({ queryKey: ["pos-pending-orders"] })
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [supabase, queryClient]);
+
+  const handlePaidFromPos = (
+    order: PendingOrder,
+    result: SettlePaymentResult,
+    payments: PaymentSplit[]
+  ) => {
+    const receiptData: ReceiptData = {
+      title: "Ticket de caisse",
+      invoiceNumber: result.invoice_number,
+      orderId: order.id,
+      tableNumber: order.table_number,
+      createdAt: new Date().toISOString(),
+      items: (order.order_items ?? []).map((item) => ({
+        name: item.product?.name ?? "Article",
+        quantity: item.quantity,
+        price: item.price,
+      })),
+      subtotal: order.subtotal,
+      discount: order.discount,
+      tax: order.tax,
+      total: order.total,
+      paymentMethod: result.payment_method,
+      paymentSplits: payments,
+      amountReceived: result.amount_received,
+      changeDue: result.change_due,
+    };
+    setReceipt(receiptData);
+    setOrderToSettle(null);
+    queryClient.invalidateQueries({ queryKey: ["pos-pending-orders"] });
+    queryClient.invalidateQueries({ queryKey: ["all-orders"] });
+    queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+    queryClient.invalidateQueries({ queryKey: ["invoices"] });
+    toast.success(
+      result.change_due > 0
+        ? `Paiement validé — rendre ${formatCurrency(result.change_due)}`
+        : "Paiement validé et comptabilisé"
+    );
+    void printReceipt(receiptData).then((printResult) => {
+      if (printResult.via !== "bridge" && result.has_cash && shouldOpenCashDrawer("cash")) {
+        void openCashDrawer();
+      }
+    });
+  };
 
   const addToCart = useCallback((product: Product) => {
     setCart((prev) => {
@@ -232,10 +336,26 @@ function POSPageInner() {
 
   return (
     <div className="h-dvh flex flex-col overflow-hidden">
-      <Header
-        title="Point de Vente"
-        subtitle="Créer commande / reçu — la compta n'enregistre qu'après validation du paiement"
-      />
+      <div className="relative">
+        <Header
+          title="Point de Vente"
+          subtitle="Créer ou encaisser les commandes reçues des tablettes"
+        />
+        <Button
+          type="button"
+          onClick={() => setShowPending(true)}
+          className="absolute right-14 lg:right-20 top-3 lg:top-4 h-10"
+          variant={pendingOrders.length > 0 ? "default" : "outline"}
+        >
+          <ClipboardList className="h-4 w-4" />
+          <span className="hidden sm:inline">À encaisser</span>
+          {pendingOrders.length > 0 && (
+            <Badge variant="secondary" className="ml-1 bg-black/30 text-off-white">
+              {pendingOrders.length}
+            </Badge>
+          )}
+        </Button>
+      </div>
 
       {receipt && <ReceiptPrintView data={receipt} />}
 
@@ -441,6 +561,65 @@ function POSPageInner() {
           </div>
         </div>
       </div>
+
+      <Dialog open={showPending} onOpenChange={setShowPending}>
+        <DialogContent className="no-print max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Commandes reçues — à encaisser</DialogTitle>
+          </DialogHeader>
+          {pendingOrders.length === 0 ? (
+            <p className="text-center text-off-white/40 py-10">
+              Aucune commande à encaisser
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {pendingOrders.map((order) => (
+                <div
+                  key={order.id}
+                  className="rounded-xl border border-smoked-brown/30 bg-black/30 p-4 flex flex-wrap items-center justify-between gap-3"
+                >
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="font-bold text-lg">Table {order.table_number ?? "—"}</p>
+                      {order.notes?.toLowerCase().includes("menu public") && (
+                        <Badge>Menu public</Badge>
+                      )}
+                      {order.notes?.toLowerCase().includes("tablette") && (
+                        <Badge>Tablette</Badge>
+                      )}
+                    </div>
+                    <p className="text-xs text-off-white/50 mt-1">
+                      {(order.order_items ?? [])
+                        .map((item) => `${item.product?.name ?? "Article"} ×${item.quantity}`)
+                        .join(", ")}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <p className="font-bold text-primary">{formatCurrency(order.total)}</p>
+                    <Button
+                      onClick={() => {
+                        setShowPending(false);
+                        setOrderToSettle(order);
+                      }}
+                    >
+                      <CheckCircle className="h-4 w-4" /> Encaisser
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <SettlePaymentDialog
+        order={orderToSettle}
+        open={!!orderToSettle}
+        onOpenChange={(open) => !open && setOrderToSettle(null)}
+        onPaid={(order, result, payments) =>
+          handlePaidFromPos(order as PendingOrder, result, payments)
+        }
+      />
     </div>
   );
 }

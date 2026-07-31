@@ -94,7 +94,7 @@ body {
   max-width: 55mm;
   height: fit-content;
   min-height: 0;
-  margin: 0;
+  margin: 0 auto;
   /* padding = the printed margin (drivers often ignore @page margins) */
   padding: 3mm 3.5mm 4mm;
   background: #fff;
@@ -103,8 +103,15 @@ body {
   /* Small enough that amounts in the millions stay on one line on 58mm paper */
   font-size: 12px;
   line-height: 1.25;
+  font-variant-numeric: tabular-nums;
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
+}
+
+/* Portal wrapper: hidden on screen, shown only while printing a receipt */
+.print-root,
+.print-only {
+  display: none;
 }
 
 .receipt-thermal .receipt-header {
@@ -196,8 +203,9 @@ body {
   font-size: 13px;
 }
 
+/* No opacity anywhere: thermal heads dither it into grey noise */
 .receipt-thermal .receipt-qty {
-  opacity: 0.8;
+  white-space: nowrap;
 }
 
 .receipt-thermal .receipt-item-price {
@@ -240,6 +248,14 @@ body {
   font-weight: 700;
 }
 
+.receipt-thermal .receipt-foot {
+  text-align: center;
+  margin: 0.8mm 0 0;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 /* Paper width variants — width includes the padding (border-box) */
 .receipt-thermal.paper-58 {
   width: 55mm;
@@ -253,19 +269,20 @@ body {
   padding: 3mm 4.5mm 4mm;
 }
 
+.receipt-preview {
+  display: block;
+  margin: 0 auto;
+  max-height: 62vh;
+  overflow-y: auto;
+  border-radius: 6px;
+  box-shadow: 0 20px 50px rgb(0 0 0 / 45%);
+}
+
 @page {
+  /* 0 so a 58mm roll is not swallowed by page margins. Documents add their own
+     padding below. Named @page rules cannot be used: the POS machines run old
+     Chrome builds that ignore them and fall back to this rule. */
   size: auto;
-  margin: 12mm;
-}
-
-/* Continuous rolls — height = content only */
-@page thermal-58mm {
-  size: 58mm auto;
-  margin: 0;
-}
-
-@page thermal-80mm {
-  size: 80mm auto;
   margin: 0;
 }
 
@@ -282,50 +299,51 @@ body {
     overflow: visible !important;
   }
 
-  body.printing-receipt {
-    height: auto !important;
-    min-height: 0 !important;
-  }
-
-  body.printing-receipt * {
-    visibility: hidden;
-  }
-
   .no-print {
     display: none !important;
   }
 
-  body.printing-receipt .print-only,
-  body.printing-receipt .print-only * {
-    visibility: visible !important;
+  /* Reports and other documents keep a readable margin */
+  body:not(.printing-receipt) {
+    padding: 10mm !important;
   }
 
-  body.printing-receipt .print-only.receipt-thermal {
+  /* Receipt: the portal wrapper is the only visible child of body, so nothing
+     above it can push it down or produce leading blank pages. */
+  body.printing-receipt > *:not(.print-root) {
+    display: none !important;
+  }
+
+  body.printing-receipt .print-root {
+    display: block !important;
+  }
+
+  body.printing-receipt .receipt-thermal {
     display: block !important;
     position: static !important;
-    left: auto !important;
-    top: auto !important;
+    /* auto margins centre the ticket on any paper: 58mm roll, 80mm roll or A4 */
+    margin: 0 auto !important;
     height: auto !important;
     min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
     page-break-after: avoid;
     page-break-inside: avoid;
     break-after: avoid;
     break-inside: avoid;
   }
 
-  body.printing-receipt .print-only.receipt-thermal.paper-58 {
-    width: 55mm !important;
-    max-width: 55mm !important;
-    margin: 0 1.5mm !important;
-    padding: 3mm 3.5mm 5mm !important;
-    page: thermal-58mm;
+  body.printing-receipt .receipt-thermal.paper-58 {
+    width: 54mm !important;
+    max-width: 54mm !important;
+    padding: 2mm 2.5mm 5mm !important;
   }
 
-  body.printing-receipt .print-only.receipt-thermal.paper-80 {
-    width: 76mm !important;
-    max-width: 76mm !important;
-    margin: 0 2mm !important;
-    padding: 3mm 4.5mm 5mm !important;
-    page: thermal-80mm;
+  body.printing-receipt .receipt-thermal.paper-80 {
+    width: 74mm !important;
+    max-width: 74mm !important;
+    padding: 2mm 3.5mm 5mm !important;
   }
 }

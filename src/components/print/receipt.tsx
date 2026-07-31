@@ -30,6 +30,9 @@ export interface ReceiptData {
   tax: number;
   total: number;
   paymentMethod?: string | null;
+  paymentSplits?: { method: string; amount: number }[];
+  amountReceived?: number | null;
+  changeDue?: number | null;
   station?: string;
   notes?: string | null;
 }
@@ -166,10 +169,31 @@ export function ReceiptPrintView({ data, id = "receipt-print" }: { data: Receipt
         </>
       )}
 
-      {data.paymentMethod && (
+      {data.paymentSplits && data.paymentSplits.length > 0 ? (
+        <div className="space-y-0.5">
+          {data.paymentSplits.map((split, i) => (
+            <div key={`${split.method}-${i}`} className="receipt-row receipt-pay">
+              <span>{paymentLabel(split.method)}</span>
+              <span>{formatCurrency(split.amount)}</span>
+            </div>
+          ))}
+        </div>
+      ) : data.paymentMethod ? (
         <div className="receipt-row receipt-pay">
           <span>Paiement</span>
           <span>{paymentLabel(data.paymentMethod)}</span>
+        </div>
+      ) : null}
+      {data.amountReceived != null && data.amountReceived > 0 && (
+        <div className="receipt-row receipt-pay">
+          <span>Reçu</span>
+          <span>{formatCurrency(data.amountReceived)}</span>
+        </div>
+      )}
+      {(data.changeDue ?? 0) > 0 && (
+        <div className="receipt-row receipt-pay">
+          <span>Monnaie</span>
+          <span>{formatCurrency(data.changeDue!)}</span>
         </div>
       )}
       {data.notes && <p className="receipt-notes">Note: {data.notes}</p>}
@@ -223,7 +247,19 @@ function toReceiptLines(data: ReceiptData, paperWidth: PaperWidth): string[] {
     lines.push(row("TOTAL", amount(data.total)));
   }
 
-  if (data.paymentMethod) lines.push(row("Paiement", paymentLabel(data.paymentMethod)));
+  if (data.paymentSplits && data.paymentSplits.length > 0) {
+    for (const split of data.paymentSplits) {
+      lines.push(row(paymentLabel(split.method), amount(split.amount)));
+    }
+  } else if (data.paymentMethod) {
+    lines.push(row("Paiement", paymentLabel(data.paymentMethod)));
+  }
+  if (data.amountReceived != null && data.amountReceived > 0) {
+    lines.push(row("Recu", amount(data.amountReceived)));
+  }
+  if ((data.changeDue ?? 0) > 0) {
+    lines.push(row("Monnaie", amount(data.changeDue ?? 0)));
+  }
   if (data.notes) lines.push(clamp(`Note: ${data.notes}`));
 
   lines.push(dashes);
@@ -233,10 +269,10 @@ function toReceiptLines(data: ReceiptData, paperWidth: PaperWidth): string[] {
 
 function wantsDrawer(data: ReceiptData): boolean {
   const settings = getCashDrawerSettings();
-  return (
-    settings.enabled !== false &&
-    (data.paymentMethod === "cash" || data.paymentMethod === "Cash")
-  );
+  if (settings.enabled === false) return false;
+  if ((data.amountReceived ?? 0) > 0) return true;
+  if (data.paymentSplits?.some((s) => s.method === "cash")) return true;
+  return data.paymentMethod === "cash" || data.paymentMethod === "Cash" || data.paymentMethod === "mixed";
 }
 
 async function printViaBridge(data: ReceiptData): Promise<boolean> {

@@ -22,6 +22,8 @@ type Permission =
   | "purchases.manage"
   | "invoices.view"
   | "invoices.create"
+  | "cash.view"
+  | "cash.manage"
   | "reports.view"
   | "reports.export"
   | "users.view"
@@ -35,7 +37,8 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     "inventory.adjust", "orders.view", "orders.create", "orders.update", "orders.cancel",
     "kitchen.view", "grill.view", "bar.view", "customers.view", "customers.manage",
     "suppliers.view", "suppliers.manage", "purchases.view", "purchases.manage",
-    "invoices.view", "invoices.create", "reports.view", "reports.export",
+    "invoices.view", "invoices.create", "cash.view", "cash.manage",
+    "reports.view", "reports.export",
     "users.view", "users.manage", "settings.manage", "ai.access",
   ],
   manager: [
@@ -43,11 +46,13 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     "inventory.adjust", "orders.view", "orders.create", "orders.update", "orders.cancel",
     "kitchen.view", "grill.view", "bar.view", "customers.view", "customers.manage",
     "suppliers.view", "suppliers.manage", "purchases.view", "purchases.manage",
-    "invoices.view", "invoices.create", "reports.view", "reports.export", "ai.access",
+    "invoices.view", "invoices.create", "cash.view", "cash.manage",
+    "reports.view", "reports.export", "ai.access",
   ],
   cashier: [
     "dashboard.view", "pos.access", "orders.view", "orders.create", "orders.update",
     "customers.view", "customers.manage", "invoices.view", "invoices.create",
+    "cash.view", "cash.manage",
   ],
   kitchen: ["kitchen.view", "orders.view", "orders.update"],
   grill: ["grill.view", "orders.view", "orders.update"],

@@ -17,6 +17,57 @@ export type TableStatus = "available" | "occupied" | "reserved" | "cleaning";
 export type ReservationStatus = "pending" | "confirmed" | "cancelled" | "completed";
 export type PurchaseStatus = "pending" | "received" | "cancelled";
 export type InvoiceStatus = "draft" | "paid" | "partial" | "cancelled";
+export type CashSessionStatus = "open" | "closed";
+export type CashMovementType =
+  | "opening_float"
+  | "cash_sale"
+  | "change_out"
+  | "cash_in"
+  | "cash_out"
+  | "closing";
+
+export type PaymentMethodLine = Exclude<PaymentMethod, "mixed">;
+
+export interface PaymentSplit {
+  method: PaymentMethodLine;
+  amount: number;
+}
+
+export interface CashSession {
+  id: string;
+  cashier_id: string;
+  status: CashSessionStatus;
+  opening_float: number;
+  expected_cash: number;
+  counted_cash: number | null;
+  variance: number | null;
+  opened_at: string;
+  closed_at: string | null;
+  notes: string | null;
+  created_at: string;
+  cashier?: Profile;
+}
+
+export interface InvoicePayment {
+  id: string;
+  invoice_id: string;
+  method: PaymentMethod;
+  amount: number;
+  amount_received: number | null;
+  change_due: number;
+  created_at: string;
+}
+
+export interface CashMovement {
+  id: string;
+  session_id: string;
+  type: CashMovementType;
+  amount: number;
+  reason: string | null;
+  invoice_id: string | null;
+  created_by: string | null;
+  created_at: string;
+}
 
 export interface Profile {
   id: string;
@@ -121,9 +172,13 @@ export interface Invoice {
   payment_method: PaymentMethod | null;
   status: InvoiceStatus;
   cashier_id: string | null;
+  cash_session_id: string | null;
+  amount_received: number | null;
+  change_due: number | null;
   created_at: string;
   customer?: Customer;
   cashier?: Profile;
+  payments?: InvoicePayment[];
 }
 
 export interface Reservation {
@@ -212,10 +267,30 @@ export interface Database {
       purchases: { Row: Purchase; Insert: Record<string, unknown>; Update: Record<string, unknown> };
       purchase_items: { Row: PurchaseItem; Insert: Record<string, unknown>; Update: Record<string, unknown> };
       notifications: { Row: Notification; Insert: Record<string, unknown>; Update: Record<string, unknown> };
+      cash_sessions: { Row: CashSession; Insert: Record<string, unknown>; Update: Record<string, unknown> };
+      invoice_payments: { Row: InvoicePayment; Insert: Record<string, unknown>; Update: Record<string, unknown> };
+      cash_movements: { Row: CashMovement; Insert: Record<string, unknown>; Update: Record<string, unknown> };
     };
     Functions: {
       get_dashboard_stats: { Args: Record<string, never>; Returns: DashboardStats };
       generate_invoice_number: { Args: Record<string, never>; Returns: string };
+      open_cash_session: { Args: { p_opening_float: number }; Returns: string };
+      add_cash_movement: {
+        Args: { p_session_id: string; p_type: string; p_amount: number; p_reason: string };
+        Returns: string;
+      };
+      close_cash_session: {
+        Args: { p_session_id: string; p_counted_cash: number; p_notes?: string | null };
+        Returns: Record<string, unknown>;
+      };
+      settle_order_payment: {
+        Args: {
+          p_order_id: string;
+          p_payments: PaymentSplit[];
+          p_cash_received?: number | null;
+        };
+        Returns: Record<string, unknown>;
+      };
     };
   };
 }

@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
-  DollarSign, TrendingUp, Package, Clock, AlertTriangle, ShoppingBag,
+  DollarSign, TrendingUp, Package, Clock, AlertTriangle, ShoppingBag, Banknote,
 } from "lucide-react";
+import Link from "next/link";
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -13,7 +14,9 @@ import {
 import { Header } from "@/components/layout/sidebar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
+import { getOpenCashSession } from "@/lib/cash";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 import type { DashboardStats, Order, Product } from "@/types/database";
 
@@ -70,6 +73,12 @@ export default function DashboardPage() {
       return (data ?? []) as Order[];
     },
     refetchInterval: 10000,
+  });
+
+  const { data: openSession } = useQuery({
+    queryKey: ["open-cash-session"],
+    queryFn: () => getOpenCashSession(supabase),
+    refetchInterval: 15000,
   });
 
   const { data: lowStockProducts = [] } = useQuery({
@@ -134,6 +143,34 @@ export default function DashboardPage() {
       <Header title="Dashboard" subtitle="Vue d'ensemble ONE SHOT Lounge & Grill" />
 
       <div className="p-6 lg:p-8 space-y-8">
+        <Card className="border-primary/20">
+          <CardContent className="p-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="p-3 rounded-xl bg-primary/10">
+                <Banknote className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <p className="text-sm text-off-white/50">Ma caisse</p>
+                {openSession ? (
+                  <>
+                    <p className="font-bold text-lg">
+                      Solde théorique {formatCurrency(openSession.expected_cash)}
+                    </p>
+                    <p className="text-xs text-emerald-400">
+                      Ouverte · fond {formatCurrency(openSession.opening_float)}
+                    </p>
+                  </>
+                ) : (
+                  <p className="font-medium text-amber-300">Aucune caisse ouverte</p>
+                )}
+              </div>
+            </div>
+            <Button asChild variant={openSession ? "outline" : "default"}>
+              <Link href="/cash">{openSession ? "Voir la caisse" : "Ouvrir la caisse"}</Link>
+            </Button>
+          </CardContent>
+        </Card>
+
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
           <StatCard
             title="Revenus du jour"

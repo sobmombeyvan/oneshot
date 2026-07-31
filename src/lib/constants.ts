@@ -51,6 +51,7 @@ export const USER_ROLES = [
 export const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: "LayoutDashboard", roles: ["administrator", "manager", "cashier", "store_keeper"] },
   { href: "/pos", label: "POS / Commande", icon: "ShoppingCart", roles: ["administrator", "manager", "cashier"] },
+  { href: "/cash", label: "Caisse", icon: "Banknote", roles: ["administrator", "manager", "cashier"] },
   { href: "/inventory", label: "Inventory", icon: "Package", roles: ["administrator", "manager", "store_keeper"] },
   { href: "/kitchen", label: "Kitchen", icon: "ChefHat", roles: ["administrator", "manager", "kitchen"] },
   { href: "/grill", label: "Grill", icon: "Flame", roles: ["administrator", "manager", "grill"] },

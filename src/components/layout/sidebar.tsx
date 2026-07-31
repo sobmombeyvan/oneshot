@@ -6,7 +6,7 @@ import {
   LayoutDashboard, ShoppingCart, Package, ChefHat, Flame, Wine,
   ClipboardList, Grid3X3, Calendar, Users, Truck, ShoppingBag,
   FileText, BarChart3, Settings, LogOut, ChevronLeft,
-  Menu, X,
+  Menu, X, Banknote,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -20,7 +20,7 @@ import type { Profile } from "@/types/database";
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   LayoutDashboard, ShoppingCart, Package, ChefHat, Flame, Wine,
   ClipboardList, Grid3X3, Calendar, Users, Truck, ShoppingBag,
-  FileText, BarChart3, Settings,
+  FileText, BarChart3, Settings, Banknote,
 };
 
 interface SidebarProps {

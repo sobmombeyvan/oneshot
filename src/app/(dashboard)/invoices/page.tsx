@@ -11,13 +11,23 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ReceiptPrintView, printReceipt, type ReceiptData } from "@/components/print/receipt";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
-import type { Invoice, OrderItem } from "@/types/database";
+import type { Invoice, InvoicePayment, OrderItem } from "@/types/database";
 
 type InvoiceWithOrder = Invoice & {
   order?: {
     table_number?: number | null;
     order_items?: (OrderItem & { product?: { name: string } })[];
   };
+  payments?: InvoicePayment[];
+  cashier?: { fullname?: string } | null;
+};
+
+const METHOD_LABELS: Record<string, string> = {
+  cash: "Espèces",
+  orange_money: "Orange Money",
+  mtn_momo: "MTN MoMo",
+  bank_card: "Carte",
+  mixed: "Mixte",
 };
 
 export default function InvoicesPage() {
@@ -29,7 +39,9 @@ export default function InvoicesPage() {
     queryFn: async () => {
       const { data } = await supabase
         .from("invoices")
-        .select("*, order:orders(table_number, order_items(*, product:products(name)))")
+        .select(
+          "*, cashier:profiles(fullname), payments:invoice_payments(*), order:orders(table_number, order_items(*, product:products(name)))"
+        )
         .order("created_at", { ascending: false })
         .limit(50);
       return (data ?? []) as InvoiceWithOrder[];
@@ -57,6 +69,12 @@ export default function InvoicesPage() {
       tax: invoice.tax,
       total: invoice.total,
       paymentMethod: invoice.payment_method,
+      paymentSplits: (invoice.payments ?? []).map((p) => ({
+        method: p.method,
+        amount: p.amount,
+      })),
+      amountReceived: invoice.amount_received,
+      changeDue: invoice.change_due,
     };
     setPrintData(receiptData);
     toast.success(`Impression ${invoice.invoice_number}`);
@@ -72,18 +90,40 @@ export default function InvoicesPage() {
         {invoices.length === 0 ? (
           <Card>
             <CardContent className="p-12 text-center text-off-white/40">
-              Aucune facture — créez une commande au POS pour en générer.
+              Aucune facture — validez un paiement dans Commandes.
             </CardContent>
           </Card>
         ) : (
           invoices.map((invoice) => (
             <Card key={invoice.id}>
-              <CardContent className="p-4 flex items-center justify-between gap-3">
+              <CardContent className="p-4 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0">
                   <FileText className="h-5 w-5 text-primary shrink-0" />
                   <div className="min-w-0">
                     <p className="font-bold truncate">{invoice.invoice_number}</p>
-                    <p className="text-xs text-off-white/40">{formatDateTime(invoice.created_at)}</p>
+                    <p className="text-xs text-off-white/40">
+                      {formatDateTime(invoice.created_at)}
+                      {invoice.cashier?.fullname ? ` · ${invoice.cashier.fullname}` : ""}
+                      {invoice.order?.table_number != null
+                        ? ` · Table ${invoice.order.table_number}`
+                        : ""}
+                    </p>
+                    <p className="text-xs text-off-white/50 mt-1 capitalize">
+                      {(invoice.payments ?? []).length > 0
+                        ? (invoice.payments ?? [])
+                            .map(
+                              (p) =>
+                                `${METHOD_LABELS[p.method] ?? p.method} ${formatCurrency(p.amount)}`
+                            )
+                            .join(" · ")
+                        : METHOD_LABELS[invoice.payment_method ?? ""] ?? "—"}
+                      {invoice.amount_received != null && (
+                        <> · reçu {formatCurrency(invoice.amount_received)}</>
+                      )}
+                      {(invoice.change_due ?? 0) > 0 && (
+                        <> · monnaie {formatCurrency(invoice.change_due!)}</>
+                      )}
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-4 shrink-0">

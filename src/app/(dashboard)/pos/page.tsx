@@ -5,8 +5,8 @@ import { useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Search, ScanBarcode, Plus, Minus, Trash2, Printer, Percent, X, ShoppingCart,
-  ClipboardList, CheckCircle,
+  Search, ScanBarcode, Plus, Minus, Trash2, Percent, X, ShoppingCart,
+  ClipboardList, CheckCircle, Banknote, Send,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Header } from "@/components/layout/sidebar";
@@ -53,10 +53,9 @@ function POSPageInner() {
   const [receipt, setReceipt] = useState<ReceiptData | null>(null);
   const [showPending, setShowPending] = useState(false);
   const [orderToSettle, setOrderToSettle] = useState<PendingOrder | null>(null);
+  const [checkoutAction, setCheckoutAction] = useState<"send" | "settle" | null>(null);
 
-  type PendingOrder = Order & {
-    order_items?: (OrderItem & { product?: { name: string } })[];
-  };
+  type PendingOrder = Order;
 
   useEffect(() => {
     const t = searchParams.get("table");
@@ -214,7 +213,7 @@ function POSPageInner() {
   const totals = calculateTotal(subtotal, discount, VAT_RATE);
 
   const checkoutMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (action: "send" | "settle") => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Non authentifié");
 
@@ -252,7 +251,10 @@ function POSPageInner() {
         station: getStation(item.product.category?.type),
       }));
 
-      const { error: itemsError } = await supabase.from("order_items").insert(orderItems);
+      const { data: insertedItems, error: itemsError } = await supabase
+        .from("order_items")
+        .insert(orderItems)
+        .select();
       if (itemsError) throw itemsError;
 
       if (resolvedTableId) {
@@ -263,51 +265,42 @@ function POSPageInner() {
       }
 
       return {
+        action,
         order,
-        items: cart.map((i) => ({
-          name: i.product.name,
-          quantity: i.quantity,
-          price: i.product.selling_price,
-        })),
+        orderItems: (insertedItems ?? []).map((item) => ({
+          ...item,
+          product: cart.find((cartItem) => cartItem.product.id === item.product_id)?.product,
+        })) as OrderItem[],
       };
     },
-    onSuccess: ({ order, items }) => {
-      const receiptData: ReceiptData = {
-        title: "Bon de commande",
-        orderId: order.id,
-        tableNumber,
-        createdAt: order.created_at ?? new Date().toISOString(),
-        items,
-        subtotal: totals.subtotal,
-        discount: totals.discount,
-        tax: totals.tax,
-        total: totals.total,
-        paymentMethod: null,
-        notes: "À encaisser — pas encore en comptabilité",
+    onSuccess: ({ action, order, orderItems }) => {
+      const pendingOrder: PendingOrder = {
+        ...(order as Order),
+        order_items: orderItems,
       };
-      setReceipt(receiptData);
-      toast.success("Commande créée. Validez le paiement dans Commandes pour la compta.");
+
       setCart([]);
       setDiscount(0);
       setTableNumber(null);
       setTableId(null);
+      setCheckoutAction(null);
       queryClient.invalidateQueries({ queryKey: ["products-pos"] });
       queryClient.invalidateQueries({ queryKey: ["restaurant-tables"] });
       queryClient.invalidateQueries({ queryKey: ["all-orders"] });
-      void printReceipt(receiptData).then((printResult) => {
-        if (printResult.via === "bridge") {
-          toast.success("Bon imprimé");
-          return;
-        }
-        toast.warning(
-          printResult.error
-            ? `Impression navigateur — ${printResult.error}`
-            : "Impression navigateur: bridge XPrinter indisponible",
-          { duration: 8000 }
-        );
-      });
+      queryClient.invalidateQueries({ queryKey: ["pos-pending-orders"] });
+
+      if (action === "settle") {
+        setOrderToSettle(pendingOrder);
+        toast.success("Commande créée — choisissez le paiement");
+        return;
+      }
+
+      toast.success("Commande envoyée en cuisine — aucune facture imprimée");
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => {
+      setCheckoutAction(null);
+      toast.error(err.message);
+    },
   });
 
   const handleBarcodeScan = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -542,21 +535,47 @@ function POSPageInner() {
             </div>
 
             <div className="grid grid-cols-2 gap-2">
-              <Button variant="outline" onClick={() => { setCart([]); setDiscount(0); }} disabled={cart.length === 0}>
-                <X className="h-4 w-4" /> Vider
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setCheckoutAction("send");
+                  checkoutMutation.mutate("send");
+                }}
+                disabled={cart.length === 0 || checkoutMutation.isPending}
+              >
+                <Send className="h-4 w-4" />
+                {checkoutMutation.isPending && checkoutAction === "send"
+                  ? "Envoi..."
+                  : "Envoyer sans facture"}
               </Button>
               <Button
                 size="lg"
                 className="short:h-10"
-                onClick={() => checkoutMutation.mutate()}
+                onClick={() => {
+                  setCheckoutAction("settle");
+                  checkoutMutation.mutate("settle");
+                }}
                 disabled={cart.length === 0 || checkoutMutation.isPending}
               >
-                <Printer className="h-4 w-4" />
-                {checkoutMutation.isPending ? "Envoi..." : "Envoyer commande"}
+                <Banknote className="h-4 w-4" />
+                {checkoutMutation.isPending && checkoutAction === "settle"
+                  ? "Création..."
+                  : "Encaisser"}
               </Button>
             </div>
+            <Button
+              variant="ghost"
+              className="w-full h-8 text-off-white/50"
+              onClick={() => {
+                setCart([]);
+                setDiscount(0);
+              }}
+              disabled={cart.length === 0 || checkoutMutation.isPending}
+            >
+                <X className="h-4 w-4" /> Vider
+            </Button>
             <p className="text-[11px] text-center text-off-white/40">
-              Pas encore en comptabilité — validez le paiement dans Commandes
+              Envoyer = cuisine seulement · Encaisser = paiement et facture immédiats
             </p>
           </div>
         </div>

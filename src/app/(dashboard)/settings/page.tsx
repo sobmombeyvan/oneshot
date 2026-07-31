@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { AlertTriangle, Lock, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Header } from "@/components/layout/sidebar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,6 +17,13 @@ import {
   checkPrinterBridge,
   type CashDrawerSettings,
 } from "@/lib/printer/cash-drawer";
+import { createClient } from "@/lib/supabase/client";
+import {
+  adminDeleteTransaction,
+  adminResetAllSales,
+} from "@/lib/admin-sales";
+import { formatCurrency, formatDateTime } from "@/lib/utils";
+import type { Invoice } from "@/types/database";
 
 const STORAGE_KEY = "oneshot-settings";
 
@@ -37,10 +46,49 @@ const DEFAULTS: AppSettings = {
 };
 
 export default function SettingsPage() {
+  const supabase = createClient();
+  const queryClient = useQueryClient();
   const [form, setForm] = useState<AppSettings>(DEFAULTS);
   const [printer, setPrinter] = useState<CashDrawerSettings>(() => getCashDrawerSettings());
   const [bridgeOk, setBridgeOk] = useState<boolean | null>(null);
   const [printers, setPrinters] = useState<string[]>([]);
+  const [adminUnlocked, setAdminUnlocked] = useState(false);
+  const [adminPassword, setAdminPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [invoiceToDelete, setInvoiceToDelete] = useState("");
+  const [busy, setBusy] = useState<"reset" | "delete" | null>(null);
+
+  const { data: profile } = useQuery({
+    queryKey: ["settings-profile"],
+    queryFn: async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return null;
+      const { data } = await supabase
+        .from("profiles")
+        .select("id, role, fullname")
+        .eq("id", user.id)
+        .single();
+      return data as { id: string; role: string; fullname: string } | null;
+    },
+  });
+
+  const isAdmin = profile?.role === "administrator";
+
+  const { data: recentInvoices = [] } = useQuery({
+    queryKey: ["admin-recent-invoices"],
+    enabled: isAdmin && adminUnlocked,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("invoices")
+        .select("id, invoice_number, total, created_at, payment_method, status")
+        .order("created_at", { ascending: false })
+        .limit(20);
+      if (error) throw error;
+      return (data ?? []) as Invoice[];
+    },
+  });
 
   useEffect(() => {
     try {
@@ -87,6 +135,77 @@ export default function SettingsPage() {
     const result = await openCashDrawer();
     if (result.ok) toast.success(`Tiroir ouvert (${result.method})`);
     else toast.error(result.error ?? "Échec ouverture tiroir");
+  };
+
+  const unlockAdmin = () => {
+    if (adminPassword.trim() !== "11310") {
+      toast.error("Mot de passe incorrect");
+      return;
+    }
+    setAdminUnlocked(true);
+    toast.success("Zone admin déverrouillée");
+  };
+
+  const handleResetSales = async () => {
+    if (confirmPassword.trim() !== "11310") {
+      toast.error("Confirmez avec le mot de passe 11310");
+      return;
+    }
+    const ok = window.confirm(
+      "Effacer TOUTES les ventes, factures, commandes et sessions de caisse ?\nLes produits et comptes utilisateurs sont conservés."
+    );
+    if (!ok) return;
+    setBusy("reset");
+    try {
+      const result = await adminResetAllSales(supabase, confirmPassword);
+      toast.success(
+        `Reset OK — ${result.deleted_invoices} factures, ${result.deleted_orders} commandes`
+      );
+      setConfirmPassword("");
+      queryClient.invalidateQueries({ queryKey: ["admin-recent-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["all-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["open-cash-session"] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Échec du reset");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleDeleteTransaction = async (invoiceNumber?: string) => {
+    const number = (invoiceNumber ?? invoiceToDelete).trim();
+    if (!number) {
+      toast.error("Indiquez le numéro de facture");
+      return;
+    }
+    if (confirmPassword.trim() !== "11310") {
+      toast.error("Confirmez avec le mot de passe 11310");
+      return;
+    }
+    const ok = window.confirm(
+      `Supprimer définitivement la transaction ${number} ?\nLe stock sera rétabli.`
+    );
+    if (!ok) return;
+    setBusy("delete");
+    try {
+      const result = await adminDeleteTransaction(supabase, confirmPassword, number);
+      toast.success(
+        `Transaction ${result.invoice_number} supprimée (${formatCurrency(result.total)})`
+      );
+      setInvoiceToDelete("");
+      setConfirmPassword("");
+      queryClient.invalidateQueries({ queryKey: ["admin-recent-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["all-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["open-cash-session"] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Échec de la suppression");
+    } finally {
+      setBusy(null);
+    }
   };
 
   return (
@@ -220,6 +339,140 @@ export default function SettingsPage() {
             </div>
           </CardContent>
         </Card>
+
+        {isAdmin && (
+          <Card className="border-red-500/30">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-red-300">
+                <AlertTriangle className="h-5 w-5" />
+                Zone administrateur — ventes
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <p className="text-sm text-off-white/50">
+                Réservé à l&apos;admin. Mot de passe requis : <strong className="text-off-white">11310</strong>.
+                Les produits et comptes restent ; seules les ventes / factures / caisses sont touchées.
+              </p>
+
+              {!adminUnlocked ? (
+                <div className="space-y-3">
+                  <Label>Mot de passe admin</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      type="password"
+                      inputMode="numeric"
+                      value={adminPassword}
+                      onChange={(e) => setAdminPassword(e.target.value)}
+                      placeholder="11310"
+                      className="max-w-xs"
+                    />
+                    <Button type="button" onClick={unlockAdmin}>
+                      <Lock className="h-4 w-4" /> Déverrouiller
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  <div className="space-y-2">
+                    <Label>Confirmer avec le mot de passe (pour chaque action)</Label>
+                    <Input
+                      type="password"
+                      inputMode="numeric"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="11310"
+                      className="max-w-xs"
+                    />
+                  </div>
+
+                  <div className="rounded-xl border border-smoked-brown/40 bg-black/30 p-4 space-y-3">
+                    <h3 className="font-semibold text-off-white">Supprimer une transaction</h3>
+                    <p className="text-xs text-off-white/50">
+                      Entrez le numéro de facture (ex. INV-…) ou choisissez dans la liste.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <Input
+                        value={invoiceToDelete}
+                        onChange={(e) => setInvoiceToDelete(e.target.value)}
+                        placeholder="N° facture"
+                        className="max-w-xs"
+                      />
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        disabled={busy !== null}
+                        onClick={() => void handleDeleteTransaction()}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        {busy === "delete" ? "Suppression…" : "Supprimer"}
+                      </Button>
+                    </div>
+                    {recentInvoices.length > 0 && (
+                      <div className="max-h-48 overflow-y-auto space-y-2 pt-2">
+                        {recentInvoices.map((inv) => (
+                          <div
+                            key={inv.id}
+                            className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-smoked-brown/30 px-3 py-2 text-sm"
+                          >
+                            <div>
+                              <p className="font-medium">{inv.invoice_number}</p>
+                              <p className="text-xs text-off-white/40">
+                                {formatDateTime(inv.created_at)} · {formatCurrency(inv.total)}
+                              </p>
+                            </div>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={busy !== null}
+                              onClick={() => {
+                                setInvoiceToDelete(inv.invoice_number);
+                                void handleDeleteTransaction(inv.invoice_number);
+                              }}
+                            >
+                              Supprimer
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="rounded-xl border border-red-500/40 bg-red-950/20 p-4 space-y-3">
+                    <h3 className="font-semibold text-red-300">Reset de toutes les ventes</h3>
+                    <p className="text-xs text-off-white/50">
+                      Efface commandes, factures, paiements, sessions de caisse et notifications.
+                      Remet le stock des ventes payées. Ne touche pas aux produits ni aux comptes.
+                    </p>
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      className="w-full"
+                      disabled={busy !== null}
+                      onClick={() => void handleResetSales()}
+                    >
+                      <AlertTriangle className="h-4 w-4" />
+                      {busy === "reset" ? "Reset en cours…" : "Reset toutes les ventes"}
+                    </Button>
+                  </div>
+
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="text-off-white/40"
+                    onClick={() => {
+                      setAdminUnlocked(false);
+                      setAdminPassword("");
+                      setConfirmPassword("");
+                    }}
+                  >
+                    Verrouiller la zone admin
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         <Button className="w-full" size="lg" onClick={save}>Sauvegarder</Button>
       </div>

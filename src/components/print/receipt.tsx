@@ -56,6 +56,14 @@ function paymentLabel(method?: string | null) {
   return PAYMENT_LABELS[method] ?? method.replace(/_/g, " ");
 }
 
+function hasCashPayment(data: ReceiptData) {
+  return (
+    data.paymentMethod === "cash" ||
+    data.paymentSplits?.some((split) => split.method === "cash") === true ||
+    data.amountReceived != null
+  );
+}
+
 /** Pad two columns to the printer line width */
 function padRow(left: string, right: string, width: number) {
   const l = left.slice(0, Math.max(0, width - right.length - 1));
@@ -204,16 +212,16 @@ export function ReceiptPrintView({
           <span>{paymentLabel(data.paymentMethod)}</span>
         </div>
       ) : null}
-      {data.amountReceived != null && data.amountReceived > 0 && (
+      {hasCashPayment(data) && data.amountReceived != null && (
         <div className="receipt-row receipt-pay">
-          <span>Reçu</span>
+          <span>Montant reçu</span>
           <span>{formatCurrency(data.amountReceived)}</span>
         </div>
       )}
-      {(data.changeDue ?? 0) > 0 && (
+      {hasCashPayment(data) && (
         <div className="receipt-row receipt-pay">
-          <span>Monnaie</span>
-          <span>{formatCurrency(data.changeDue!)}</span>
+          <span>Monnaie rendue</span>
+          <span>{formatCurrency(data.changeDue ?? 0)}</span>
         </div>
       )}
       {data.notes && <p className="receipt-notes">Note: {data.notes}</p>}
@@ -289,11 +297,11 @@ function toReceiptLines(data: ReceiptData, paperWidth: PaperWidth): string[] {
   } else if (data.paymentMethod) {
     lines.push(row("Paiement", paymentLabel(data.paymentMethod)));
   }
-  if (data.amountReceived != null && data.amountReceived > 0) {
-    lines.push(row("Recu", amount(data.amountReceived)));
+  if (hasCashPayment(data) && data.amountReceived != null) {
+    lines.push(row("Montant recu", amount(data.amountReceived)));
   }
-  if ((data.changeDue ?? 0) > 0) {
-    lines.push(row("Monnaie", amount(data.changeDue ?? 0)));
+  if (hasCashPayment(data)) {
+    lines.push(row("Monnaie rendue", amount(data.changeDue ?? 0)));
   }
   if (data.notes) lines.push(clamp(`Note: ${data.notes}`));
 

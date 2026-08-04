@@ -272,17 +272,9 @@ export default function InvoicesPage() {
       toast.success(`Facture mise à jour — ${formatCurrency(result.total)}`);
       setEditOpenOrder(null);
       setAddLines([]);
-      const { data } = await refetchOpen();
+      await refetchOpen();
       queryClient.invalidateQueries({ queryKey: ["all-orders"] });
       queryClient.invalidateQueries({ queryKey: ["pos-pending-orders"] });
-      const updated = (data as OpenOrder[] | undefined)?.find(
-        (order) => order.id === result.order_id
-      );
-      if (updated) {
-        const receipt = buildOpenOrderReceipt(updated);
-        setPrintData(receipt);
-        void printReceipt(receipt);
-      }
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -309,16 +301,7 @@ export default function InvoicesPage() {
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
       queryClient.invalidateQueries({ queryKey: ["open-cash-session"] });
-      const { data } = await refetch();
-      const updated = (data as InvoiceWithOrder[] | undefined)?.find(
-        (inv) => inv.id === result.invoice_id
-      );
-      if (updated) {
-        const receipt = buildReceipt(updated);
-        setPrintData(receipt);
-        void printReceipt(receipt);
-        toast.message("Réimpression de la facture…");
-      }
+      await refetch();
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -868,7 +851,7 @@ export default function InvoicesPage() {
               onClick={() => saveMutation.mutate()}
             >
               <Printer className="h-4 w-4" />
-              {saveMutation.isPending ? "Enregistrement…" : "Sauver & réimprimer"}
+              {saveMutation.isPending ? "Enregistrement…" : "Sauver"}
             </Button>
           </div>
         </DialogContent>

@@ -60,6 +60,7 @@ export default function OrdersPage() {
   const [payMode, setPayMode] = useState<PayMode>("single");
   const [selectedPayment, setSelectedPayment] = useState<LineMethod>("cash");
   const [cashReceived, setCashReceived] = useState("");
+  const [customerName, setCustomerName] = useState("");
   const [mixed, setMixed] = useState<Record<LineMethod, string>>({
     cash: "",
     orange_money: "",
@@ -118,6 +119,7 @@ export default function OrdersPage() {
     setPayMode("single");
     setSelectedPayment("cash");
     setCashReceived(String(order.total));
+    setCustomerName("");
     setMixed({ cash: "", orange_money: "", mtn_momo: "", bank_card: "" });
   };
 
@@ -171,12 +173,13 @@ export default function OrdersPage() {
         supabase,
         payOrder.id,
         payments,
-        cashDue > 0 ? receivedNum : null
+        cashDue > 0 ? receivedNum : null,
+        customerName
       );
 
-      return { order: payOrder, result, payments };
+      return { order: payOrder, result, payments, customerName: customerName.trim() || null };
     },
-    onSuccess: ({ order, result, payments }) => {
+    onSuccess: ({ order, result, payments, customerName: paidName }) => {
       const items = (order.order_items ?? []).map((i) => ({
         name: i.product?.name ?? "Article",
         quantity: i.quantity,
@@ -187,6 +190,7 @@ export default function OrdersPage() {
         invoiceNumber: result.invoice_number,
         orderId: order.id,
         tableNumber: order.table_number,
+        customerName: paidName ?? result.customer_name ?? null,
         createdAt: order.created_at,
         items,
         subtotal: order.subtotal,
@@ -454,6 +458,16 @@ export default function OrdersPage() {
           <p className="text-sm text-off-white/50">
             Table {payOrder?.table_number ?? "—"} · crée la facture et met à jour la caisse
           </p>
+
+          <div className="space-y-2">
+            <Label>Nom du client (optionnel)</Label>
+            <Input
+              value={customerName}
+              onChange={(e) => setCustomerName(e.target.value)}
+              placeholder="Ex: Jean Dupont"
+              className="h-11"
+            />
+          </div>
 
           <div className="grid grid-cols-2 gap-2">
             <button

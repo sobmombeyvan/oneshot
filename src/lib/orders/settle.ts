@@ -9,6 +9,7 @@ export interface SettlePaymentResult {
   change_due: number;
   cash_session_id: string | null;
   has_cash: boolean;
+  customer_name?: string | null;
 }
 
 /**
@@ -19,7 +20,8 @@ export async function validateOrderPayment(
   supabase: SupabaseClient,
   orderId: string,
   payments: PaymentSplit[],
-  cashReceived: number | null = null
+  cashReceived: number | null = null,
+  customerName: string | null = null
 ): Promise<SettlePaymentResult> {
   const {
     data: { user },
@@ -53,6 +55,23 @@ export async function validateOrderPayment(
   if (!result?.invoice_number) {
     throw new Error("Paiement non confirmé");
   }
+
+  const name = customerName?.trim() || null;
+  if (name && result.invoice_id) {
+    const { error: nameError } = await supabase.rpc("set_invoice_customer_name", {
+      p_invoice_id: result.invoice_id,
+      p_customer_name: name,
+    });
+    if (nameError) {
+      // Fallback direct update if RPC not deployed yet
+      await supabase
+        .from("invoices")
+        .update({ customer_name: name })
+        .eq("id", result.invoice_id);
+    }
+    result.customer_name = name;
+  }
+
   return result;
 }
 

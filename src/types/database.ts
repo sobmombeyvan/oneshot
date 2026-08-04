@@ -175,6 +175,7 @@ export interface Invoice {
   cash_session_id: string | null;
   amount_received: number | null;
   change_due: number | null;
+  customer_name: string | null;
   created_at: string;
   customer?: Customer;
   cashier?: Profile;

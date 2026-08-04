@@ -59,6 +59,7 @@ export function SettlePaymentDialog({
   const [mode, setMode] = useState<PayMode>("single");
   const [method, setMethod] = useState<LineMethod>("cash");
   const [cashReceived, setCashReceived] = useState("");
+  const [customerName, setCustomerName] = useState("");
   const [mixed, setMixed] = useState<Record<LineMethod, string>>({
     cash: "",
     orange_money: "",
@@ -100,6 +101,7 @@ export function SettlePaymentDialog({
     setMode("single");
     setMethod("cash");
     setCashReceived(String(total));
+    setCustomerName("");
     setMixed({ cash: "", orange_money: "", mtn_momo: "", bank_card: "" });
   };
 
@@ -122,14 +124,19 @@ export function SettlePaymentDialog({
         supabase,
         order.id,
         payments,
-        cashDue > 0 ? received : null
+        cashDue > 0 ? received : null,
+        customerName
       );
-      return { result, payments };
+      return { result, payments, customerName: customerName.trim() || null };
     },
-    onSuccess: ({ result, payments }) => {
+    onSuccess: ({ result, payments, customerName: paidName }) => {
       if (!order) return;
       queryClient.invalidateQueries({ queryKey: ["open-cash-session"] });
-      onPaid(order, result, payments);
+      onPaid(
+        { ...order, notes: paidName ? `Client: ${paidName}` : order.notes },
+        { ...result, customer_name: paidName ?? result.customer_name },
+        payments
+      );
       onOpenChange(false);
     },
     onError: (error: Error) => toast.error(error.message),
@@ -150,6 +157,16 @@ export function SettlePaymentDialog({
         <p className="text-sm text-off-white/50">
           Table {order?.table_number ?? "—"} · facture créée après confirmation
         </p>
+
+        <div className="space-y-2">
+          <Label>Nom du client (optionnel)</Label>
+          <Input
+            value={customerName}
+            onChange={(e) => setCustomerName(e.target.value)}
+            placeholder="Ex: Jean Dupont"
+            className="h-11"
+          />
+        </div>
 
         <div className="grid grid-cols-2 gap-2">
           <button

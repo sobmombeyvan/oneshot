@@ -24,6 +24,7 @@ export interface ReceiptData {
   invoiceNumber?: string;
   orderId?: string;
   tableNumber?: number | null;
+  customerName?: string | null;
   createdAt: string;
   items: ReceiptItem[];
   subtotal: number;
@@ -126,6 +127,12 @@ export function ReceiptPrintView({
           <div className="receipt-row">
             <span>Table</span>
             <span className="receipt-strong">{data.tableNumber}</span>
+          </div>
+        )}
+        {data.customerName && (
+          <div className="receipt-row">
+            <span>Client</span>
+            <span className="receipt-strong">{data.customerName}</span>
           </div>
         )}
         {data.station && (
@@ -269,6 +276,7 @@ function toReceiptLines(data: ReceiptData, paperWidth: PaperWidth): string[] {
   if (data.invoiceNumber) lines.push(row("No", data.invoiceNumber));
   if (data.orderId) lines.push(row("Cmd", `#${data.orderId.slice(0, 8).toUpperCase()}`));
   if (data.tableNumber != null) lines.push(row("Table", String(data.tableNumber)));
+  if (data.customerName) lines.push(row("Client", data.customerName));
   if (data.station) lines.push(row("Station", data.station));
   lines.push(row("Date", formatDateTime(data.createdAt)));
   lines.push(dashes);

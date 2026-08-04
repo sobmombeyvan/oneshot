@@ -152,6 +152,7 @@ function POSPageInner() {
       invoiceNumber: result.invoice_number,
       orderId: order.id,
       tableNumber: order.table_number,
+      customerName: result.customer_name ?? null,
       createdAt: new Date().toISOString(),
       items: (order.order_items ?? []).map((item) => ({
         name: item.product?.name ?? "Article",

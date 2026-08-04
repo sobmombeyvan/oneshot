@@ -51,6 +51,7 @@ export const USER_ROLES = [
 export const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: "LayoutDashboard", roles: ["administrator", "manager", "cashier", "store_keeper"] },
   { href: "/pos", label: "POS / Commande", icon: "ShoppingCart", roles: ["administrator", "manager", "cashier"] },
+  { href: "/invoices", label: "Factures", icon: "FileText", roles: ["administrator", "manager", "cashier"] },
   { href: "/cash", label: "Caisse", icon: "Banknote", roles: ["administrator", "manager", "cashier"] },
   { href: "/inventory", label: "Inventory", icon: "Package", roles: ["administrator", "manager", "store_keeper"] },
   { href: "/kitchen", label: "Cuisine", icon: "ChefHat", roles: ["administrator", "manager", "kitchen", "grill"] },
@@ -61,7 +62,6 @@ export const NAV_ITEMS = [
   { href: "/customers", label: "Customers", icon: "Users", roles: ["administrator", "manager", "cashier"] },
   { href: "/suppliers", label: "Suppliers", icon: "Truck", roles: ["administrator", "manager", "store_keeper"] },
   { href: "/purchases", label: "Purchases", icon: "ShoppingBag", roles: ["administrator", "manager", "store_keeper"] },
-  { href: "/invoices", label: "Factures", icon: "FileText", roles: ["administrator", "manager", "cashier"] },
   { href: "/reports", label: "Reports", icon: "BarChart3", roles: ["administrator", "manager"] },
   { href: "/settings", label: "Settings", icon: "Settings", roles: ["administrator", "manager"] },
 ] as const;

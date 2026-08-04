@@ -18,6 +18,10 @@ import { ReceiptPrintView, printReceipt, type ReceiptData } from "@/components/p
 import { SettlePaymentDialog } from "@/components/orders/settle-payment-dialog";
 import { createClient } from "@/lib/supabase/client";
 import { amendInvoice } from "@/lib/orders/amend-invoice";
+import {
+  amendOpenOrder,
+  customerNameFromNotes,
+} from "@/lib/orders/amend-open-order";
 import { isUnpaidOrder, type SettlePaymentResult } from "@/lib/orders/settle";
 import { formatCurrency, formatDateTime, cn } from "@/lib/utils";
 import type {
@@ -70,12 +74,16 @@ export default function InvoicesPage() {
   const [printData, setPrintData] = useState<ReceiptData | null>(null);
   const [previewData, setPreviewData] = useState<ReceiptData | null>(null);
   const [editInvoice, setEditInvoice] = useState<InvoiceWithOrder | null>(null);
+  const [editOpenOrder, setEditOpenOrder] = useState<OpenOrder | null>(null);
   const [orderToSettle, setOrderToSettle] = useState<OpenOrder | null>(null);
   const [customerName, setCustomerName] = useState("");
+  const [tableNumberEdit, setTableNumberEdit] = useState("");
+  const [discountEdit, setDiscountEdit] = useState("");
   const [productSearch, setProductSearch] = useState("");
   const [addLines, setAddLines] = useState<AddLine[]>([]);
+  const [qtyEdits, setQtyEdits] = useState<Record<string, number>>({});
 
-  const { data: openOrders = [] } = useQuery({
+  const { data: openOrders = [], refetch: refetchOpen } = useQuery({
     queryKey: ["invoices-open-orders"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -109,7 +117,7 @@ export default function InvoicesPage() {
 
   const { data: products = [] } = useQuery({
     queryKey: ["products-invoice-amend"],
-    enabled: !!editInvoice,
+    enabled: !!editInvoice || !!editOpenOrder,
     queryFn: async () => {
       const { data } = await supabase
         .from("products")
@@ -206,9 +214,26 @@ export default function InvoicesPage() {
 
   const openEdit = (invoice: InvoiceWithOrder) => {
     setEditInvoice(invoice);
+    setEditOpenOrder(null);
     setCustomerName(invoice.customer_name ?? "");
     setAddLines([]);
     setProductSearch("");
+    setQtyEdits({});
+  };
+
+  const openEditUnpaid = (order: OpenOrder) => {
+    setEditOpenOrder(order);
+    setEditInvoice(null);
+    setCustomerName(customerNameFromNotes(order.notes));
+    setTableNumberEdit(order.table_number != null ? String(order.table_number) : "");
+    setDiscountEdit(order.discount ? String(order.discount) : "");
+    setAddLines([]);
+    setProductSearch("");
+    const initial: Record<string, number> = {};
+    (order.order_items ?? []).forEach((item) => {
+      initial[item.id] = item.quantity;
+    });
+    setQtyEdits(initial);
   };
 
   const upsertLine = (product: Product, delta: number) => {
@@ -224,6 +249,43 @@ export default function InvoicesPage() {
       );
     });
   };
+
+  const saveOpenMutation = useMutation({
+    mutationFn: async () => {
+      if (!editOpenOrder) throw new Error("Commande introuvable");
+      const quantityUpdates = Object.entries(qtyEdits).map(([item_id, quantity]) => ({
+        item_id,
+        quantity,
+      }));
+      return amendOpenOrder(supabase, editOpenOrder.id, {
+        customerName,
+        tableNumber: tableNumberEdit ? parseInt(tableNumberEdit, 10) : null,
+        discount: discountEdit ? parseFloat(discountEdit) || 0 : 0,
+        quantityUpdates,
+        addItems: addLines.map((l) => ({
+          product_id: l.product.id,
+          quantity: l.quantity,
+        })),
+      });
+    },
+    onSuccess: async (result) => {
+      toast.success(`Facture mise à jour — ${formatCurrency(result.total)}`);
+      setEditOpenOrder(null);
+      setAddLines([]);
+      const { data } = await refetchOpen();
+      queryClient.invalidateQueries({ queryKey: ["all-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["pos-pending-orders"] });
+      const updated = (data as OpenOrder[] | undefined)?.find(
+        (order) => order.id === result.order_id
+      );
+      if (updated) {
+        const receipt = buildOpenOrderReceipt(updated);
+        setPrintData(receipt);
+        void printReceipt(receipt);
+      }
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -374,6 +436,9 @@ export default function InvoicesPage() {
                     <p className="text-xs text-off-white/40 mt-1">
                       {formatDateTime(order.created_at)}
                       {order.cashier?.fullname ? ` · ${order.cashier.fullname}` : ""}
+                      {customerNameFromNotes(order.notes)
+                        ? ` · ${customerNameFromNotes(order.notes)}`
+                        : ""}
                       {" · "}#{order.id.slice(0, 8).toUpperCase()}
                     </p>
                     <p className="text-xs text-off-white/50 mt-1 truncate">
@@ -386,6 +451,13 @@ export default function InvoicesPage() {
                     <p className="font-bold text-primary text-lg mr-2">
                       {formatCurrency(order.total)}
                     </p>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => openEditUnpaid(order)}
+                    >
+                      <Pencil className="h-4 w-4" /> Modifier
+                    </Button>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -505,6 +577,181 @@ export default function InvoicesPage() {
               </Button>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!editOpenOrder}
+        onOpenChange={(open) => {
+          if (!open) {
+            setEditOpenOrder(null);
+            setAddLines([]);
+            setQtyEdits({});
+          }
+        }}
+      >
+        <DialogContent className="no-print max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              Modifier facture en cours — Table{" "}
+              {editOpenOrder?.table_number ?? "—"} ·{" "}
+              {formatCurrency(editOpenOrder?.total ?? 0)}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="space-y-2 sm:col-span-1">
+              <Label>Table</Label>
+              <Input
+                type="number"
+                value={tableNumberEdit}
+                onChange={(e) => setTableNumberEdit(e.target.value)}
+                placeholder="N°"
+              />
+            </div>
+            <div className="space-y-2 sm:col-span-1">
+              <Label>Remise (FCFA)</Label>
+              <Input
+                type="number"
+                value={discountEdit}
+                onChange={(e) => setDiscountEdit(e.target.value)}
+                placeholder="0"
+              />
+            </div>
+            <div className="space-y-2 sm:col-span-1">
+              <Label>Nom du client</Label>
+              <Input
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+                placeholder="Optionnel"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Articles (quantités modifiables)</Label>
+            <div className="rounded-xl border border-smoked-brown/30 bg-black/20 p-3 space-y-2 max-h-48 overflow-y-auto">
+              {(editOpenOrder?.order_items ?? []).length === 0 ? (
+                <p className="text-off-white/40 text-sm">Aucun article</p>
+              ) : (
+                (editOpenOrder?.order_items ?? []).map((item) => (
+                  <div key={item.id} className="flex items-center gap-2 text-sm">
+                    <span className="flex-1 truncate">
+                      {item.product?.name ?? "Article"}
+                    </span>
+                    <button
+                      type="button"
+                      className="p-1 rounded-lg hover:bg-smoked-brown/30"
+                      onClick={() =>
+                        setQtyEdits((prev) => ({
+                          ...prev,
+                          [item.id]: Math.max(0, (prev[item.id] ?? item.quantity) - 1),
+                        }))
+                      }
+                    >
+                      <Minus className="h-3.5 w-3.5" />
+                    </button>
+                    <span className="w-6 text-center font-bold">
+                      {qtyEdits[item.id] ?? item.quantity}
+                    </span>
+                    <button
+                      type="button"
+                      className="p-1 rounded-lg hover:bg-smoked-brown/30"
+                      onClick={() =>
+                        setQtyEdits((prev) => ({
+                          ...prev,
+                          [item.id]: (prev[item.id] ?? item.quantity) + 1,
+                        }))
+                      }
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                    </button>
+                    <span className="w-24 text-right">
+                      {formatCurrency(
+                        item.price * (qtyEdits[item.id] ?? item.quantity)
+                      )}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+            <p className="text-[11px] text-off-white/40">
+              Quantité 0 = supprimer l&apos;article
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            <Label>Ajouter des produits</Label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-off-white/40" />
+              <Input
+                value={productSearch}
+                onChange={(e) => setProductSearch(e.target.value)}
+                placeholder="Rechercher un produit…"
+                className="pl-10"
+              />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto">
+              {filteredProducts.map((product) => (
+                <button
+                  key={product.id}
+                  type="button"
+                  onClick={() => upsertLine(product, 1)}
+                  className="flex items-center justify-between gap-2 rounded-xl border border-smoked-brown/30 bg-charcoal/50 px-3 py-2 text-left hover:border-primary/40"
+                >
+                  <span className="truncate text-sm">{product.name}</span>
+                  <span className="text-primary text-sm shrink-0">
+                    {formatCurrency(product.selling_price)}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {addLines.length > 0 && (
+            <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 space-y-2">
+              <p className="text-sm font-medium">À ajouter</p>
+              {addLines.map((line) => (
+                <div key={line.product.id} className="flex items-center gap-2 text-sm">
+                  <span className="flex-1 truncate">{line.product.name}</span>
+                  <button
+                    type="button"
+                    className="p-1 rounded-lg hover:bg-smoked-brown/30"
+                    onClick={() => upsertLine(line.product, -1)}
+                  >
+                    <Minus className="h-3.5 w-3.5" />
+                  </button>
+                  <span className="w-6 text-center font-bold">{line.quantity}</span>
+                  <button
+                    type="button"
+                    className="p-1 rounded-lg hover:bg-smoked-brown/30"
+                    onClick={() => upsertLine(line.product, 1)}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                  </button>
+                  <span className="w-24 text-right">
+                    {formatCurrency(line.product.selling_price * line.quantity)}
+                  </span>
+                </div>
+              ))}
+              <p className="text-right font-bold text-primary">
+                + {formatCurrency(addLinesTotal)}
+              </p>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3 pt-2">
+            <Button variant="outline" onClick={() => setEditOpenOrder(null)}>
+              Annuler
+            </Button>
+            <Button
+              disabled={saveOpenMutation.isPending}
+              onClick={() => saveOpenMutation.mutate()}
+            >
+              <Printer className="h-4 w-4" />
+              {saveOpenMutation.isPending ? "Enregistrement…" : "Sauver"}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 

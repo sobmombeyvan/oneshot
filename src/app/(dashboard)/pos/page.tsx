@@ -6,7 +6,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Search, ScanBarcode, Plus, Minus, Trash2, Percent, X, ShoppingCart,
-  ClipboardList, CheckCircle, Banknote, Send,
+  ClipboardList, CheckCircle, Banknote, Send, FilePlus2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Header } from "@/components/layout/sidebar";
@@ -20,6 +20,13 @@ import { openCashDrawer, shouldOpenCashDrawer } from "@/lib/printer/cash-drawer"
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency, calculateTotal, cn } from "@/lib/utils";
 import { VAT_RATE } from "@/lib/constants";
+import {
+  createEmptyTicket,
+  loadPosTickets,
+  savePosTickets,
+  ticketLabel,
+  type PosTicket,
+} from "@/lib/pos-tickets";
 import type {
   Product,
   Category,
@@ -46,6 +53,8 @@ function POSPageInner() {
 
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [tickets, setTickets] = useState<PosTicket[]>(() => [createEmptyTicket(1)]);
+  const [activeTicketId, setActiveTicketId] = useState<string>("");
   const [cart, setCart] = useState<CartItem[]>([]);
   const [tableNumber, setTableNumber] = useState<number | null>(null);
   const [tableId, setTableId] = useState<string | null>(null);
@@ -54,8 +63,92 @@ function POSPageInner() {
   const [showPending, setShowPending] = useState(false);
   const [orderToSettle, setOrderToSettle] = useState<PendingOrder | null>(null);
   const [checkoutAction, setCheckoutAction] = useState<"send" | "settle" | null>(null);
+  const ticketsReady = useRef(false);
 
   type PendingOrder = Order;
+
+  // Restore open invoices from this cashier workstation
+  useEffect(() => {
+    const loaded = loadPosTickets();
+    setTickets(loaded.tickets);
+    setActiveTicketId(loaded.activeId);
+    const active =
+      loaded.tickets.find((t) => t.id === loaded.activeId) ?? loaded.tickets[0];
+    setCart(active.cart);
+    setDiscount(active.discount);
+    setTableNumber(active.tableNumber);
+    setTableId(active.tableId);
+    ticketsReady.current = true;
+  }, []);
+
+  // Keep active ticket + localStorage in sync while working
+  useEffect(() => {
+    if (!ticketsReady.current || !activeTicketId) return;
+    setTickets((prev) => {
+      const next = prev.map((t) =>
+        t.id === activeTicketId
+          ? { ...t, cart, discount, tableNumber, tableId }
+          : t
+      );
+      savePosTickets(next, activeTicketId);
+      return next;
+    });
+  }, [cart, discount, tableNumber, tableId, activeTicketId]);
+
+  const applyTicket = useCallback((ticket: PosTicket) => {
+    setActiveTicketId(ticket.id);
+    setCart(ticket.cart);
+    setDiscount(ticket.discount);
+    setTableNumber(ticket.tableNumber);
+    setTableId(ticket.tableId);
+  }, []);
+
+  const snapshotCurrent = useCallback(
+    (list: PosTicket[]) =>
+      list.map((t) =>
+        t.id === activeTicketId
+          ? { ...t, cart, discount, tableNumber, tableId }
+          : t
+      ),
+    [activeTicketId, cart, discount, tableNumber, tableId]
+  );
+
+  const startNewTicket = () => {
+    const snapped = snapshotCurrent(tickets);
+    const empty = snapped.find((t) => t.cart.length === 0 && t.id !== activeTicketId);
+    if (empty) {
+      setTickets(snapped);
+      savePosTickets(snapped, empty.id);
+      applyTicket(empty);
+      toast.message(`Facture ${ticketLabel(empty)} active`);
+      return;
+    }
+    const created = createEmptyTicket(snapped.length + 1);
+    const next = [...snapped, created];
+    setTickets(next);
+    savePosTickets(next, created.id);
+    applyTicket(created);
+    toast.success("Nouvelle facture ouverte");
+  };
+
+  const switchTicket = (ticketId: string) => {
+    if (ticketId === activeTicketId) return;
+    const snapped = snapshotCurrent(tickets);
+    const target = snapped.find((t) => t.id === ticketId);
+    if (!target) return;
+    setTickets(snapped);
+    savePosTickets(snapped, target.id);
+    applyTicket(target);
+  };
+
+  const closeActiveTicket = () => {
+    const snapped = snapshotCurrent(tickets).filter((t) => t.id !== activeTicketId);
+    const remaining = snapped.length > 0 ? snapped : [createEmptyTicket(1)];
+    const nextActive = remaining[0];
+    setTickets(remaining);
+    savePosTickets(remaining, nextActive.id);
+    applyTicket(nextActive);
+  };
 
   useEffect(() => {
     const t = searchParams.get("table");
@@ -280,11 +373,8 @@ function POSPageInner() {
         order_items: orderItems,
       };
 
-      setCart([]);
-      setDiscount(0);
-      setTableNumber(null);
-      setTableId(null);
       setCheckoutAction(null);
+      closeActiveTicket();
       queryClient.invalidateQueries({ queryKey: ["products-pos"] });
       queryClient.invalidateQueries({ queryKey: ["restaurant-tables"] });
       queryClient.invalidateQueries({ queryKey: ["all-orders"] });
@@ -324,6 +414,17 @@ function POSPageInner() {
   }, []);
 
   const selectTable = (t: RestaurantTable) => {
+    const snapped = snapshotCurrent(tickets);
+    const existing = snapped.find(
+      (ticket) => ticket.tableNumber === t.number && ticket.id !== activeTicketId
+    );
+    if (existing) {
+      setTickets(snapped);
+      savePosTickets(snapped, existing.id);
+      applyTicket(existing);
+      toast.message(`Retour facture ${ticketLabel(existing)}`);
+      return;
+    }
     setTableNumber(t.number);
     setTableId(t.id);
   };
@@ -333,7 +434,7 @@ function POSPageInner() {
       <div className="relative">
         <Header
           title="Point de Vente"
-          subtitle="Créer ou encaisser les commandes reçues des tablettes"
+          subtitle="Plusieurs factures ouvertes — passez de l'une à l'autre"
         />
         <Button
           type="button"
@@ -432,12 +533,58 @@ function POSPageInner() {
         </div>
 
         <div className="w-full border-t border-smoked-brown/30 bg-charcoal/30 flex flex-col min-h-0 max-h-[42dvh] short:max-h-[45dvh] tablet-land:max-h-none tablet-land:w-[340px] tablet-land:border-t-0 tablet-land:border-l [@media(min-width:1024px)_and_(min-aspect-ratio:5/4)]:max-h-none [@media(min-width:1024px)_and_(min-aspect-ratio:5/4)]:max-w-md [@media(min-width:1024px)_and_(min-aspect-ratio:5/4)]:border-t-0 [@media(min-width:1024px)_and_(min-aspect-ratio:5/4)]:border-l">
-          <div className="p-3 lg:p-4 short:p-2 border-b border-smoked-brown/30 shrink-0">
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="font-[family-name:var(--font-cinzel)] text-base lg:text-lg font-bold">Panier</h2>
+          <div className="p-3 lg:p-4 short:p-2 border-b border-smoked-brown/30 shrink-0 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="font-[family-name:var(--font-cinzel)] text-base lg:text-lg font-bold">
+                Factures ouvertes
+              </h2>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8 shrink-0"
+                onClick={startNewTicket}
+              >
+                <FilePlus2 className="h-4 w-4" />
+                Nouvelle
+              </Button>
+            </div>
+            <div className="flex gap-1.5 overflow-x-auto pb-1">
+              {tickets.map((ticket) => {
+                const active = ticket.id === activeTicketId;
+                const count =
+                  ticket.id === activeTicketId
+                    ? cart.length
+                    : ticket.cart.reduce((n, i) => n + i.quantity, 0);
+                return (
+                  <button
+                    key={ticket.id}
+                    type="button"
+                    onClick={() => switchTicket(ticket.id)}
+                    className={cn(
+                      "px-2.5 py-1.5 rounded-lg text-xs border whitespace-nowrap transition-colors",
+                      active
+                        ? "bg-primary border-primary text-off-white"
+                        : "border-smoked-brown/40 text-off-white/70 hover:border-primary/40"
+                    )}
+                  >
+                    {ticketLabel(
+                      ticket.id === activeTicketId
+                        ? { ...ticket, tableNumber, label: ticket.label }
+                        : ticket
+                    )}
+                    {count > 0 ? ` · ${count}` : ""}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-off-white/40">
+                Active : {ticketLabel({ tableNumber, label: tickets.find((t) => t.id === activeTicketId)?.label ?? "F1" })}
+              </p>
               <Badge variant="default">{cart.length} articles</Badge>
             </div>
-            <div className="flex flex-wrap gap-1.5 mb-2">
+            <div className="flex flex-wrap gap-1.5">
               {tables.slice(0, 12).map((t) => (
                 <button
                   key={t.id}
@@ -573,10 +720,10 @@ function POSPageInner() {
               }}
               disabled={cart.length === 0 || checkoutMutation.isPending}
             >
-                <X className="h-4 w-4" /> Vider
+              <X className="h-4 w-4" /> Vider cette facture
             </Button>
             <p className="text-[11px] text-center text-off-white/40">
-              Envoyer = cuisine seulement · Encaisser = paiement et facture immédiats
+              Nouvelle = autre facture · cliquez un onglet pour revenir
             </p>
           </div>
         </div>

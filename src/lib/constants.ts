@@ -61,7 +61,7 @@ export const NAV_ITEMS = [
   { href: "/customers", label: "Customers", icon: "Users", roles: ["administrator", "manager", "cashier"] },
   { href: "/suppliers", label: "Suppliers", icon: "Truck", roles: ["administrator", "manager", "store_keeper"] },
   { href: "/purchases", label: "Purchases", icon: "ShoppingBag", roles: ["administrator", "manager", "store_keeper"] },
-  { href: "/invoices", label: "Invoices", icon: "FileText", roles: ["administrator", "manager", "cashier"] },
+  { href: "/invoices", label: "Factures", icon: "FileText", roles: ["administrator", "manager", "cashier"] },
   { href: "/reports", label: "Reports", icon: "BarChart3", roles: ["administrator", "manager"] },
   { href: "/settings", label: "Settings", icon: "Settings", roles: ["administrator", "manager"] },
 ] as const;

@@ -1,8 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Printer, FileText, Eye, Pencil, Plus, Minus, Search } from "lucide-react";
+import {
+  Printer, FileText, Eye, Pencil, Plus, Minus, Search, Banknote, Clock,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Header } from "@/components/layout/sidebar";
 import { Button } from "@/components/ui/button";
@@ -12,10 +15,19 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ReceiptPrintView, printReceipt, type ReceiptData } from "@/components/print/receipt";
+import { SettlePaymentDialog } from "@/components/orders/settle-payment-dialog";
 import { createClient } from "@/lib/supabase/client";
 import { amendInvoice } from "@/lib/orders/amend-invoice";
-import { formatCurrency, formatDateTime } from "@/lib/utils";
-import type { Invoice, InvoicePayment, OrderItem, Product } from "@/types/database";
+import { isUnpaidOrder, type SettlePaymentResult } from "@/lib/orders/settle";
+import { formatCurrency, formatDateTime, cn } from "@/lib/utils";
+import type {
+  Invoice,
+  InvoicePayment,
+  Order,
+  OrderItem,
+  PaymentSplit,
+  Product,
+} from "@/types/database";
 
 type InvoiceWithOrder = Invoice & {
   order?: {
@@ -26,7 +38,13 @@ type InvoiceWithOrder = Invoice & {
   cashier?: { fullname?: string } | null;
 };
 
+type OpenOrder = Order & {
+  order_items?: (OrderItem & { product?: { name: string } })[];
+  cashier?: { fullname?: string } | null;
+};
+
 type AddLine = { product: Product; quantity: number };
+type TabKey = "open" | "paid";
 
 const METHOD_LABELS: Record<string, string> = {
   cash: "Espèces",
@@ -36,15 +54,43 @@ const METHOD_LABELS: Record<string, string> = {
   mixed: "Mixte",
 };
 
+const STATUS_LABELS: Record<string, string> = {
+  pending: "En attente",
+  preparing: "En préparation",
+  ready: "Prête",
+  served: "Servie",
+  completed: "Terminée",
+  cancelled: "Annulée",
+};
+
 export default function InvoicesPage() {
   const supabase = createClient();
   const queryClient = useQueryClient();
+  const [tab, setTab] = useState<TabKey>("open");
   const [printData, setPrintData] = useState<ReceiptData | null>(null);
   const [previewData, setPreviewData] = useState<ReceiptData | null>(null);
   const [editInvoice, setEditInvoice] = useState<InvoiceWithOrder | null>(null);
+  const [orderToSettle, setOrderToSettle] = useState<OpenOrder | null>(null);
   const [customerName, setCustomerName] = useState("");
   const [productSearch, setProductSearch] = useState("");
   const [addLines, setAddLines] = useState<AddLine[]>([]);
+
+  const { data: openOrders = [] } = useQuery({
+    queryKey: ["invoices-open-orders"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("orders")
+        .select(
+          "*, cashier:profiles(fullname), order_items(*, product:products(name))"
+        )
+        .neq("status", "cancelled")
+        .order("created_at", { ascending: false })
+        .limit(80);
+      if (error) throw error;
+      return ((data ?? []) as OpenOrder[]).filter(isUnpaidOrder);
+    },
+    refetchInterval: 8000,
+  });
 
   const { data: invoices = [], refetch } = useQuery({
     queryKey: ["invoices"],
@@ -54,8 +100,9 @@ export default function InvoicesPage() {
         .select(
           "*, cashier:profiles(fullname), payments:invoice_payments(*), order:orders(table_number, order_items(*, product:products(name)))"
         )
+        .eq("status", "paid")
         .order("created_at", { ascending: false })
-        .limit(50);
+        .limit(80);
       return (data ?? []) as InvoiceWithOrder[];
     },
   });
@@ -92,6 +139,15 @@ export default function InvoicesPage() {
     [addLines]
   );
 
+  const openTotal = useMemo(
+    () => openOrders.reduce((sum, order) => sum + Number(order.total ?? 0), 0),
+    [openOrders]
+  );
+  const paidTotal = useMemo(
+    () => invoices.reduce((sum, inv) => sum + Number(inv.total ?? 0), 0),
+    [invoices]
+  );
+
   const buildReceipt = (invoice: InvoiceWithOrder): ReceiptData => {
     const items = (invoice.order?.order_items ?? []).map((item) => ({
       name: item.product?.name ?? "Article",
@@ -122,6 +178,24 @@ export default function InvoicesPage() {
       changeDue: invoice.change_due,
     };
   };
+
+  const buildOpenOrderReceipt = (order: OpenOrder): ReceiptData => ({
+    title: "Bon de commande",
+    orderId: order.id,
+    tableNumber: order.table_number,
+    createdAt: order.created_at,
+    items: (order.order_items ?? []).map((item) => ({
+      name: item.product?.name ?? "Article",
+      quantity: item.quantity,
+      price: item.price,
+    })),
+    subtotal: order.subtotal,
+    discount: order.discount,
+    tax: order.tax,
+    total: order.total,
+    paymentMethod: null,
+    notes: "En cours — pas encore payée",
+  });
 
   const handlePrint = (invoice: InvoiceWithOrder) => {
     const receiptData = buildReceipt(invoice);
@@ -187,19 +261,161 @@ export default function InvoicesPage() {
     onError: (err: Error) => toast.error(err.message),
   });
 
+  const handlePaid = (
+    order: Order,
+    result: SettlePaymentResult,
+    payments: PaymentSplit[]
+  ) => {
+    const full = order as OpenOrder;
+    const receiptData: ReceiptData = {
+      title: "Facture",
+      invoiceNumber: result.invoice_number,
+      orderId: order.id,
+      tableNumber: order.table_number,
+      customerName: result.customer_name ?? null,
+      createdAt: new Date().toISOString(),
+      items: (full.order_items ?? []).map((item) => ({
+        name: item.product?.name ?? "Article",
+        quantity: item.quantity,
+        price: item.price,
+      })),
+      subtotal: order.subtotal,
+      discount: order.discount,
+      tax: order.tax,
+      total: order.total,
+      paymentMethod: result.payment_method,
+      paymentSplits: payments,
+      amountReceived: result.amount_received,
+      changeDue: result.change_due,
+    };
+    setPrintData(receiptData);
+    setOrderToSettle(null);
+    setTab("paid");
+    queryClient.invalidateQueries({ queryKey: ["invoices-open-orders"] });
+    queryClient.invalidateQueries({ queryKey: ["invoices"] });
+    queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+    toast.success("Paiement validé — facture dans « Déjà payées »");
+    void printReceipt(receiptData);
+  };
+
   return (
     <div>
       <Header
         title="Factures"
-        subtitle="Nom client · ajouter des produits · réimprimer"
+        subtitle="En cours à encaisser · déjà payées à réimprimer"
       />
       {printData && <ReceiptPrintView data={printData} />}
 
       <div className="p-6 lg:p-8 space-y-4 no-print">
-        {invoices.length === 0 ? (
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => setTab("open")}
+            className={cn(
+              "rounded-xl border p-4 text-left transition-colors",
+              tab === "open"
+                ? "border-primary bg-primary/10"
+                : "border-smoked-brown/40 hover:border-primary/40"
+            )}
+          >
+            <div className="flex items-center gap-2 text-sm text-off-white/60">
+              <Clock className="h-4 w-4" /> En cours
+            </div>
+            <p className="mt-1 text-2xl font-bold">{openOrders.length}</p>
+            <p className="text-sm text-primary">{formatCurrency(openTotal)}</p>
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("paid")}
+            className={cn(
+              "rounded-xl border p-4 text-left transition-colors",
+              tab === "paid"
+                ? "border-primary bg-primary/10"
+                : "border-smoked-brown/40 hover:border-primary/40"
+            )}
+          >
+            <div className="flex items-center gap-2 text-sm text-off-white/60">
+              <FileText className="h-4 w-4" /> Déjà payées
+            </div>
+            <p className="mt-1 text-2xl font-bold">{invoices.length}</p>
+            <p className="text-sm text-primary">{formatCurrency(paidTotal)}</p>
+          </button>
+        </div>
+
+        {tab === "open" ? (
+          openOrders.length === 0 ? (
+            <Card>
+              <CardContent className="p-12 text-center text-off-white/40 space-y-3">
+                <p>Aucune facture en cours.</p>
+                <Button asChild>
+                  <Link href="/pos">Ouvrir le POS</Link>
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            openOrders.map((order) => (
+              <Card key={order.id}>
+                <CardContent className="p-4 flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-bold text-lg">
+                        Table {order.table_number ?? "—"}
+                      </p>
+                      <Badge variant="warning">
+                        {STATUS_LABELS[order.status] ?? order.status}
+                      </Badge>
+                      {order.notes?.toLowerCase().includes("menu public") && (
+                        <Badge>Menu public</Badge>
+                      )}
+                      {order.notes?.toLowerCase().includes("tablette") && (
+                        <Badge>Tablette</Badge>
+                      )}
+                    </div>
+                    <p className="text-xs text-off-white/40 mt-1">
+                      {formatDateTime(order.created_at)}
+                      {order.cashier?.fullname ? ` · ${order.cashier.fullname}` : ""}
+                      {" · "}#{order.id.slice(0, 8).toUpperCase()}
+                    </p>
+                    <p className="text-xs text-off-white/50 mt-1 truncate">
+                      {(order.order_items ?? [])
+                        .map((item) => `${item.product?.name ?? "Article"} ×${item.quantity}`)
+                        .join(", ") || "Aucun article"}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 shrink-0">
+                    <p className="font-bold text-primary text-lg mr-2">
+                      {formatCurrency(order.total)}
+                    </p>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setPreviewData(buildOpenOrderReceipt(order))}
+                    >
+                      <Eye className="h-4 w-4" /> Aperçu
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const receipt = buildOpenOrderReceipt(order);
+                        setPrintData(receipt);
+                        void printReceipt(receipt);
+                      }}
+                    >
+                      <Printer className="h-4 w-4" /> Bon
+                    </Button>
+                    <Button size="sm" onClick={() => setOrderToSettle(order)}>
+                      <Banknote className="h-4 w-4" /> Encaisser
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          )
+        ) : invoices.length === 0 ? (
           <Card>
             <CardContent className="p-12 text-center text-off-white/40">
-              Aucune facture — validez un paiement dans Commandes.
+              Aucune facture payée pour le moment.
             </CardContent>
           </Card>
         ) : (
@@ -239,7 +455,7 @@ export default function InvoicesPage() {
                 <div className="flex flex-wrap items-center gap-2 shrink-0">
                   <div className="text-right mr-2">
                     <p className="font-bold text-primary">{formatCurrency(invoice.total)}</p>
-                    <Badge variant="secondary" className="capitalize">{invoice.status}</Badge>
+                    <Badge variant="secondary">Payée</Badge>
                   </div>
                   <Button variant="ghost" size="sm" onClick={() => openEdit(invoice)}>
                     <Pencil className="h-4 w-4" /> Modifier
@@ -261,10 +477,17 @@ export default function InvoicesPage() {
         )}
       </div>
 
+      <SettlePaymentDialog
+        order={orderToSettle}
+        open={!!orderToSettle}
+        onOpenChange={(open) => !open && setOrderToSettle(null)}
+        onPaid={handlePaid}
+      />
+
       <Dialog open={!!previewData} onOpenChange={(open) => !open && setPreviewData(null)}>
         <DialogContent className="no-print max-w-lg">
           <DialogHeader>
-            <DialogTitle>Aperçu de la facture</DialogTitle>
+            <DialogTitle>Aperçu</DialogTitle>
           </DialogHeader>
           {previewData && (
             <>
@@ -278,7 +501,7 @@ export default function InvoicesPage() {
                   void printReceipt(previewData);
                 }}
               >
-                <Printer className="h-4 w-4" /> Imprimer cette facture
+                <Printer className="h-4 w-4" /> Imprimer
               </Button>
             </>
           )}

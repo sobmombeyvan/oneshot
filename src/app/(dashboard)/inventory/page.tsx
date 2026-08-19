@@ -19,6 +19,7 @@ import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils";
 import { uploadProductImage } from "@/lib/storage";
 import { logActivity } from "@/lib/activity";
+import { sortCategories } from "@/lib/menu";
 import type { CategoryType, Product, ProductStatus } from "@/types/database";
 
 const ALLOWED_CATEGORY_TYPES = ["lounge", "grill"] as const;
@@ -97,7 +98,7 @@ export default function InventoryPage() {
         .select("*")
         .in("type", [...ALLOWED_CATEGORY_TYPES])
         .order("name");
-      return (data ?? []) as { id: string; name: string }[];
+      return sortCategories((data ?? []) as { id: string; name: string; type?: string }[]);
     },
   });
 

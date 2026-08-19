@@ -119,6 +119,12 @@ ON CONFLICT (barcode) DO UPDATE SET
   status = 'active'::product_status,
   updated_at = NOW();
 
+-- Drop leftover empty demo categories (seed Cocktails, Beer, etc.)
+DELETE FROM public.categories c
+WHERE NOT EXISTS (
+  SELECT 1 FROM public.products p WHERE p.category_id = c.id
+);
+
 -- Verification: expected total from this script = 44 products.
 SELECT
   c.name AS category,

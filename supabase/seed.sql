@@ -15,7 +15,10 @@ INSERT INTO public.restaurant_tables (number, status) VALUES
   (1, 'available'), (2, 'available'), (3, 'available'),
   (4, 'available'), (5, 'available'), (6, 'available'),
   (7, 'available'), (8, 'available'), (9, 'available'),
-  (10, 'available'), (11, 'available'), (12, 'available');
+  (10, 'available'), (11, 'available'), (12, 'available'),
+  (13, 'available'), (14, 'available'), (15, 'available'),
+  (16, 'available'), (17, 'available'), (18, 'available'),
+  (19, 'available'), (20, 'available');
 
 INSERT INTO public.suppliers (company_name, phone, email, contact_person) VALUES
   ('Fresh Foods Ltd', '+237 6XX XXX XXX', 'orders@freshfoods.cm', 'Jean Dupont'),

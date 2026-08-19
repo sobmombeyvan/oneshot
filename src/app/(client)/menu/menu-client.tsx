@@ -17,8 +17,10 @@ import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { clearTabletSession, getTabletSession, setTabletSession } from "@/lib/tablet";
 import { BRAND, VAT_RATE } from "@/lib/constants";
-import { calculateTotal, cn, formatCurrency } from "@/lib/utils";
+import { TABLE_COUNT, sortCategories } from "@/lib/menu";
+import { calculateTotal, formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { ProductMenuBrowser } from "@/components/menu/product-menu-browser";
 import type { CartItem, Category, Product, RestaurantTable } from "@/types/database";
 
 export default function ClientMenuPage() {
@@ -28,7 +30,6 @@ export default function ClientMenuPage() {
   const supabase = createClient();
 
   const [tableNumber, setTableNumber] = useState<number | null>(null);
-  const [categoryId, setCategoryId] = useState<string | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
   const [orderSent, setOrderSent] = useState(false);
@@ -55,20 +56,18 @@ export default function ClientMenuPage() {
         .in("type", ["lounge", "grill"])
         .order("name");
       if (error) throw error;
-      return (data ?? []) as Category[];
+      return sortCategories((data ?? []) as Category[]);
     },
   });
 
   const { data: products = [], isLoading } = useQuery({
-    queryKey: ["client-products", categoryId],
+    queryKey: ["client-products"],
     queryFn: async () => {
-      let query = supabase
+      const { data, error } = await supabase
         .from("products")
         .select("*, category:categories(*)")
         .eq("status", "active")
         .order("name");
-      if (categoryId) query = query.eq("category_id", categoryId);
-      const { data, error } = await query;
       if (error) throw error;
       return (data ?? []) as Product[];
     },
@@ -209,7 +208,7 @@ export default function ClientMenuPage() {
         <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 w-full max-w-lg">
           {(tables.length > 0
             ? tables
-            : Array.from({ length: 12 }, (_, i) => ({
+            : Array.from({ length: TABLE_COUNT }, (_, i) => ({
                 id: String(i + 1),
                 number: i + 1,
                 status: "available" as const,
@@ -273,41 +272,11 @@ export default function ClientMenuPage() {
             </button>
           </div>
         </div>
-
-        <div className="mt-3 flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
-          <button
-            type="button"
-            onClick={() => setCategoryId(null)}
-            className={cn(
-              "shrink-0 h-11 px-4 rounded-full text-sm border",
-              categoryId === null
-                ? "bg-primary text-black border-primary"
-                : "border-smoked-brown/40 text-off-white/70"
-            )}
-          >
-            Tout le menu
-          </button>
-          {categories.map((category) => (
-            <button
-              key={category.id}
-              type="button"
-              onClick={() => setCategoryId(category.id)}
-              className={cn(
-                "shrink-0 h-11 px-4 rounded-full text-sm border",
-                categoryId === category.id
-                  ? "bg-primary text-black border-primary"
-                  : "border-smoked-brown/40 text-off-white/70"
-              )}
-            >
-              {category.name}
-            </button>
-          ))}
-        </div>
       </header>
 
-      <main className="flex-1 p-3 sm:p-5 pb-28">
+      <main className="flex-1 flex flex-col p-3 sm:p-5 pb-28 min-h-0">
         {orderSent && (
-          <div className="mb-4 flex items-center gap-3 rounded-2xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-emerald-300">
+          <div className="mb-4 flex items-center gap-3 rounded-2xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-emerald-300 shrink-0">
             <CheckCircle2 className="h-5 w-5 shrink-0" />
             <p className="text-sm">
               Commande envoyée. Vous pouvez en ajouter une autre quand vous voulez.
@@ -315,49 +284,15 @@ export default function ClientMenuPage() {
           </div>
         )}
 
-        {isLoading ? (
-          <div className="flex justify-center py-20">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 tablet-land:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
-            {products.map((product) => (
-              <button
-                key={product.id}
-                type="button"
-                onClick={() => addToCart(product)}
-                className="text-left rounded-2xl border border-smoked-brown/30 bg-charcoal/50 p-3 sm:p-4 hover:border-primary/50 active:scale-[0.98] transition"
-              >
-                <div className="h-28 sm:h-36 rounded-xl bg-smoked-brown/20 mb-3 overflow-hidden flex items-center justify-center">
-                  {product.image ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={product.image}
-                      alt={product.name}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <UtensilsCrossed className="h-8 w-8 text-off-white/20" />
-                  )}
-                </div>
-                <h2 className="font-semibold text-sm sm:text-base leading-snug line-clamp-2">
-                  {product.name}
-                </h2>
-                {product.description && (
-                  <p className="text-xs text-off-white/45 mt-1 line-clamp-2">
-                    {product.description}
-                  </p>
-                )}
-                <p className="text-primary font-bold mt-2 text-base sm:text-lg">
-                  {formatCurrency(product.selling_price)}
-                </p>
-                <span className="mt-3 inline-flex h-10 w-full items-center justify-center rounded-xl bg-primary/15 text-primary text-sm font-medium">
-                  <Plus className="h-4 w-4 mr-1" /> Ajouter
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
+        <ProductMenuBrowser
+          products={products}
+          categories={categories}
+          onAdd={addToCart}
+          variant="catalog"
+          isLoading={isLoading}
+          searchPlaceholder="Rechercher un plat ou une boisson…"
+          className="flex-1 min-h-0"
+        />
       </main>
 
       {cartCount > 0 && !cartOpen && (

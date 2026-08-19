@@ -9,6 +9,7 @@ export interface PosTicket {
   tableId: string | null;
   cart: CartItem[];
   discount: number;
+  customerName: string;
 }
 
 export function newTicketId() {
@@ -23,6 +24,7 @@ export function createEmptyTicket(index = 1): PosTicket {
     tableId: null,
     cart: [],
     discount: 0,
+    customerName: "",
   };
 }
 
@@ -43,7 +45,7 @@ export function loadPosTickets(): { tickets: PosTicket[]; activeId: string } {
     }
     const parsed = JSON.parse(raw) as { tickets?: PosTicket[]; activeId?: string };
     const tickets = Array.isArray(parsed.tickets) && parsed.tickets.length > 0
-      ? parsed.tickets
+      ? parsed.tickets.map((t) => ({ ...t, customerName: t.customerName ?? "" }))
       : [createEmptyTicket(1)];
     const activeId =
       tickets.find((t) => t.id === parsed.activeId)?.id ?? tickets[0].id;

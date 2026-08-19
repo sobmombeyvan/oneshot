@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Banknote, CheckCircle, CreditCard, Layers, Smartphone } from "lucide-react";
+import { Banknote, CheckCircle, CreditCard, Layers, Smartphone, User } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -21,8 +21,31 @@ import { formatCurrency, cn } from "@/lib/utils";
 import { PAYMENT_METHODS } from "@/lib/constants";
 import type { Order, PaymentSplit } from "@/types/database";
 
+const RECENT_NAMES_KEY = "oneshot-recent-customer-names";
+
 type LineMethod = "cash" | "orange_money" | "mtn_momo" | "bank_card";
 type PayMode = "single" | "mixed";
+
+function loadRecentNames(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(RECENT_NAMES_KEY);
+    return raw ? (JSON.parse(raw) as string[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveRecentName(name: string) {
+  const trimmed = name.trim();
+  if (!trimmed || typeof window === "undefined") return;
+  const recent = [trimmed, ...loadRecentNames().filter((n) => n !== trimmed)].slice(0, 6);
+  try {
+    localStorage.setItem(RECENT_NAMES_KEY, JSON.stringify(recent));
+  } catch {
+    /* ignore */
+  }
+}
 
 const methods: { value: LineMethod; label: string }[] = [
   { value: "cash", label: "Espèces" },
@@ -44,6 +67,7 @@ export function SettlePaymentDialog({
   open,
   onOpenChange,
   onPaid,
+  initialCustomerName = "",
 }: {
   order: Order | null;
   open: boolean;
@@ -53,13 +77,16 @@ export function SettlePaymentDialog({
     result: SettlePaymentResult,
     payments: PaymentSplit[]
   ) => void;
+  initialCustomerName?: string;
 }) {
   const supabase = createClient();
   const queryClient = useQueryClient();
+  const nameInputRef = useRef<HTMLInputElement>(null);
   const [mode, setMode] = useState<PayMode>("single");
   const [method, setMethod] = useState<LineMethod>("cash");
   const [cashReceived, setCashReceived] = useState("");
   const [customerName, setCustomerName] = useState("");
+  const [recentNames, setRecentNames] = useState<string[]>([]);
   const [mixed, setMixed] = useState<Record<LineMethod, string>>({
     cash: "",
     orange_money: "",
@@ -101,15 +128,19 @@ export function SettlePaymentDialog({
     setMode("single");
     setMethod("cash");
     setCashReceived(String(total));
-    setCustomerName("");
+    setCustomerName(initialCustomerName.trim());
+    setRecentNames(loadRecentNames());
     setMixed({ cash: "", orange_money: "", mtn_momo: "", bank_card: "" });
   };
 
   useEffect(() => {
-    if (open && order) resetForOrder();
+    if (open && order) {
+      resetForOrder();
+      setTimeout(() => nameInputRef.current?.focus(), 100);
+    }
     // Reset only when a different order is opened.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, order?.id]);
+  }, [open, order?.id, initialCustomerName]);
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -131,6 +162,7 @@ export function SettlePaymentDialog({
     },
     onSuccess: ({ result, payments, customerName: paidName }) => {
       if (!order) return;
+      if (paidName) saveRecentName(paidName);
       queryClient.invalidateQueries({ queryKey: ["open-cash-session"] });
       onPaid(
         { ...order, notes: paidName ? `Client: ${paidName}` : order.notes },
@@ -158,14 +190,42 @@ export function SettlePaymentDialog({
           Table {order?.table_number ?? "—"} · facture créée après confirmation
         </p>
 
-        <div className="space-y-2">
-          <Label>Nom du client (optionnel)</Label>
+        <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <User className="h-5 w-5 text-primary shrink-0" />
+            <Label className="text-base font-semibold text-off-white">
+              Nom sur la facture
+            </Label>
+          </div>
           <Input
+            ref={nameInputRef}
             value={customerName}
             onChange={(e) => setCustomerName(e.target.value)}
-            placeholder="Ex: Jean Dupont"
-            className="h-11"
+            placeholder="Ex: Jean Dupont, Société ABC…"
+            className="h-12 text-base"
           />
+          {recentNames.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {recentNames.map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  onClick={() => setCustomerName(name)}
+                  className={cn(
+                    "px-2.5 py-1 rounded-full text-xs border transition-colors",
+                    customerName === name
+                      ? "border-primary bg-primary/20 text-primary"
+                      : "border-smoked-brown/40 text-off-white/60 hover:border-primary/40"
+                  )}
+                >
+                  {name}
+                </button>
+              ))}
+            </div>
+          )}
+          <p className="text-xs text-off-white/40">
+            Optionnel — apparaît sur le ticket imprimé
+          </p>
         </div>
 
         <div className="grid grid-cols-2 gap-2">

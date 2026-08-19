@@ -48,20 +48,58 @@ export const USER_ROLES = [
   { value: "client", label: "Tablette client" },
 ] as const;
 
-export const NAV_ITEMS = [
-  { href: "/dashboard", label: "Dashboard", icon: "LayoutDashboard", roles: ["administrator", "manager", "cashier", "store_keeper"] },
-  { href: "/pos", label: "POS / Commande", icon: "ShoppingCart", roles: ["administrator", "manager", "cashier"] },
-  { href: "/invoices", label: "Factures", icon: "FileText", roles: ["administrator", "manager", "cashier"] },
-  { href: "/cash", label: "Caisse", icon: "Banknote", roles: ["administrator", "manager", "cashier"] },
-  { href: "/inventory", label: "Inventory", icon: "Package", roles: ["administrator", "manager", "store_keeper"] },
-  { href: "/kitchen", label: "Cuisine", icon: "ChefHat", roles: ["administrator", "manager", "kitchen", "grill"] },
-  { href: "/bar", label: "Bar", icon: "Wine", roles: ["administrator", "manager", "bar"] },
-  { href: "/orders", label: "Commandes", icon: "ClipboardList", roles: ["administrator", "manager", "cashier"] },
-  { href: "/tables", label: "Tables", icon: "Grid3X3", roles: ["administrator", "manager", "cashier"] },
-  { href: "/reservations", label: "Reservations", icon: "Calendar", roles: ["administrator", "manager", "cashier"] },
-  { href: "/customers", label: "Customers", icon: "Users", roles: ["administrator", "manager", "cashier"] },
-  { href: "/suppliers", label: "Suppliers", icon: "Truck", roles: ["administrator", "manager", "store_keeper"] },
-  { href: "/purchases", label: "Purchases", icon: "ShoppingBag", roles: ["administrator", "manager", "store_keeper"] },
-  { href: "/reports", label: "Reports", icon: "BarChart3", roles: ["administrator", "manager"] },
-  { href: "/settings", label: "Settings", icon: "Settings", roles: ["administrator", "manager"] },
+export const NAV_SECTIONS = [
+  {
+    id: "overview",
+    label: "Vue d'ensemble",
+    items: [
+      { href: "/dashboard", label: "Tableau de bord", icon: "LayoutDashboard", roles: ["administrator", "manager", "cashier", "store_keeper"] },
+    ],
+  },
+  {
+    id: "service",
+    label: "Service",
+    items: [
+      { href: "/pos", label: "POS", icon: "ShoppingCart", roles: ["administrator", "manager", "cashier"] },
+      { href: "/orders", label: "Commandes", icon: "ClipboardList", roles: ["administrator", "manager", "cashier"] },
+      { href: "/tables", label: "Tables", icon: "Grid3X3", roles: ["administrator", "manager", "cashier"] },
+      { href: "/reservations", label: "Réservations", icon: "Calendar", roles: ["administrator", "manager", "cashier"] },
+    ],
+  },
+  {
+    id: "caisse",
+    label: "Caisse",
+    items: [
+      { href: "/cash", label: "Caisse", icon: "Banknote", roles: ["administrator", "manager", "cashier"] },
+      { href: "/invoices", label: "Factures", icon: "FileText", roles: ["administrator", "manager", "cashier"] },
+      { href: "/customers", label: "Clients", icon: "Users", roles: ["administrator", "manager", "cashier"] },
+    ],
+  },
+  {
+    id: "cuisine",
+    label: "Cuisine",
+    items: [
+      { href: "/kitchen", label: "Cuisine", icon: "ChefHat", roles: ["administrator", "manager", "kitchen", "grill"] },
+      { href: "/bar", label: "Bar", icon: "Wine", roles: ["administrator", "manager", "bar"] },
+    ],
+  },
+  {
+    id: "stock",
+    label: "Stock",
+    items: [
+      { href: "/inventory", label: "Inventaire", icon: "Package", roles: ["administrator", "manager", "store_keeper"] },
+      { href: "/purchases", label: "Achats", icon: "ShoppingBag", roles: ["administrator", "manager", "store_keeper"] },
+      { href: "/suppliers", label: "Fournisseurs", icon: "Truck", roles: ["administrator", "manager", "store_keeper"] },
+    ],
+  },
+  {
+    id: "admin",
+    label: "Administration",
+    items: [
+      { href: "/reports", label: "Rapports", icon: "BarChart3", roles: ["administrator", "manager"] },
+      { href: "/settings", label: "Paramètres", icon: "Settings", roles: ["administrator", "manager"] },
+    ],
+  },
 ] as const;
+
+export const NAV_ITEMS = NAV_SECTIONS.flatMap((section) => section.items);

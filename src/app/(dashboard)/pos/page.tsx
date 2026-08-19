@@ -5,8 +5,8 @@ import { useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Search, ScanBarcode, Plus, Minus, Trash2, Percent, X, ShoppingCart,
-  ClipboardList, CheckCircle, Banknote, Send, FilePlus2,
+  ScanBarcode, Plus, Minus, Trash2, Percent, X,
+  ClipboardList, CheckCircle, Banknote, Send, FilePlus2, User,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Header } from "@/components/layout/sidebar";
@@ -16,10 +16,12 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ReceiptPrintView, printReceipt, type ReceiptData } from "@/components/print/receipt";
 import { SettlePaymentDialog } from "@/components/orders/settle-payment-dialog";
+import { ProductMenuBrowser } from "@/components/menu/product-menu-browser";
 import { openCashDrawer, shouldOpenCashDrawer } from "@/lib/printer/cash-drawer";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency, calculateTotal, cn } from "@/lib/utils";
 import { VAT_RATE } from "@/lib/constants";
+import { sortCategories } from "@/lib/menu";
 import {
   createEmptyTicket,
   loadPosTickets,
@@ -51,17 +53,17 @@ function POSPageInner() {
   const searchParams = useSearchParams();
   const searchRef = useRef<HTMLInputElement>(null);
 
-  const [search, setSearch] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [tickets, setTickets] = useState<PosTicket[]>(() => [createEmptyTicket(1)]);
   const [activeTicketId, setActiveTicketId] = useState<string>("");
   const [cart, setCart] = useState<CartItem[]>([]);
   const [tableNumber, setTableNumber] = useState<number | null>(null);
   const [tableId, setTableId] = useState<string | null>(null);
   const [discount, setDiscount] = useState(0);
+  const [customerName, setCustomerName] = useState("");
   const [receipt, setReceipt] = useState<ReceiptData | null>(null);
   const [showPending, setShowPending] = useState(false);
   const [orderToSettle, setOrderToSettle] = useState<PendingOrder | null>(null);
+  const [settleCustomerName, setSettleCustomerName] = useState("");
   const [checkoutAction, setCheckoutAction] = useState<"send" | "settle" | null>(null);
   const ticketsReady = useRef(false);
 
@@ -78,6 +80,7 @@ function POSPageInner() {
     setDiscount(active.discount);
     setTableNumber(active.tableNumber);
     setTableId(active.tableId);
+    setCustomerName(active.customerName ?? "");
     ticketsReady.current = true;
   }, []);
 
@@ -87,13 +90,13 @@ function POSPageInner() {
     setTickets((prev) => {
       const next = prev.map((t) =>
         t.id === activeTicketId
-          ? { ...t, cart, discount, tableNumber, tableId }
+          ? { ...t, cart, discount, tableNumber, tableId, customerName }
           : t
       );
       savePosTickets(next, activeTicketId);
       return next;
     });
-  }, [cart, discount, tableNumber, tableId, activeTicketId]);
+  }, [cart, discount, tableNumber, tableId, customerName, activeTicketId]);
 
   const applyTicket = useCallback((ticket: PosTicket) => {
     setActiveTicketId(ticket.id);
@@ -101,16 +104,17 @@ function POSPageInner() {
     setDiscount(ticket.discount);
     setTableNumber(ticket.tableNumber);
     setTableId(ticket.tableId);
+    setCustomerName(ticket.customerName ?? "");
   }, []);
 
   const snapshotCurrent = useCallback(
     (list: PosTicket[]) =>
       list.map((t) =>
         t.id === activeTicketId
-          ? { ...t, cart, discount, tableNumber, tableId }
+          ? { ...t, cart, discount, tableNumber, tableId, customerName }
           : t
       ),
-    [activeTicketId, cart, discount, tableNumber, tableId]
+    [activeTicketId, cart, discount, tableNumber, tableId, customerName]
   );
 
   const startNewTicket = () => {
@@ -166,7 +170,7 @@ function POSPageInner() {
         .select("*")
         .in("type", [...ALLOWED_CATEGORY_TYPES])
         .order("name");
-      return (data ?? []) as Category[];
+      return sortCategories((data ?? []) as Category[]);
     },
   });
 
@@ -178,17 +182,14 @@ function POSPageInner() {
     },
   });
 
-  const { data: products = [] } = useQuery({
-    queryKey: ["products-pos", selectedCategory, search],
+  const { data: products = [], isLoading: productsLoading } = useQuery({
+    queryKey: ["products-pos"],
     queryFn: async () => {
-      let query = supabase
+      const { data } = await supabase
         .from("products")
         .select("*, category:categories(*)")
         .eq("status", "active")
         .order("name");
-      if (selectedCategory) query = query.eq("category_id", selectedCategory);
-      if (search) query = query.or(`name.ilike.%${search}%,barcode.eq.${search}`);
-      const { data } = await query;
       return (data ?? []) as Product[];
     },
   });
@@ -381,6 +382,7 @@ function POSPageInner() {
       queryClient.invalidateQueries({ queryKey: ["pos-pending-orders"] });
 
       if (action === "settle") {
+        setSettleCustomerName(customerName.trim());
         setOrderToSettle(pendingOrder);
         toast.success("Commande créée — choisissez le paiement");
         return;
@@ -394,20 +396,22 @@ function POSPageInner() {
     },
   });
 
-  const handleBarcodeScan = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && search) {
+  const handleBarcodeScan = useCallback(
+    (query: string) => {
+      const q = query.trim();
+      if (!q) return;
       const product = products.find(
-        (p) => p.barcode === search || p.name.toLowerCase() === search.toLowerCase()
+        (p) => p.barcode === q || p.name.toLowerCase() === q.toLowerCase()
       );
       if (product) {
         addToCart(product);
-        setSearch("");
         toast.success(`${product.name} ajouté`);
       } else {
         toast.error("Produit introuvable");
       }
-    }
-  };
+    },
+    [products, addToCart]
+  );
 
   useEffect(() => {
     searchRef.current?.focus();
@@ -456,18 +460,7 @@ function POSPageInner() {
 
       <div className="flex-1 flex flex-col overflow-hidden no-print min-h-0 tablet-land:flex-row [@media(min-width:1024px)_and_(min-aspect-ratio:5/4)]:flex-row">
         <div className="flex-1 flex flex-col p-3 lg:p-6 square:p-2 short:p-2 overflow-hidden min-h-0 square:flex-[1.15] tablet-land:flex-[1.2]">
-          <div className="flex gap-2 lg:gap-3 mb-3 short:mb-2">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-off-white/40" />
-              <Input
-                ref={searchRef}
-                placeholder="Rechercher ou scanner un code-barres..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                onKeyDown={handleBarcodeScan}
-                className="pl-10 h-11 short:h-10 text-base"
-              />
-            </div>
+          <div className="flex gap-2 mb-2 shrink-0">
             <Button
               variant="outline"
               size="icon"
@@ -482,54 +475,18 @@ function POSPageInner() {
             </Button>
           </div>
 
-          <div className="flex gap-2 mb-3 short:mb-2 overflow-x-auto pb-1 shrink-0">
-            <button
-              onClick={() => setSelectedCategory(null)}
-              className={cn(
-                "px-3 py-1.5 short:px-2.5 short:py-1 rounded-xl text-sm short:text-xs whitespace-nowrap transition-colors",
-                !selectedCategory ? "bg-primary text-off-white" : "bg-charcoal text-off-white/60 hover:text-off-white"
-              )}
-            >
-              Tous
-            </button>
-            {categories.map((cat) => (
-              <button
-                key={cat.id}
-                onClick={() => setSelectedCategory(cat.id)}
-                className={cn(
-                  "px-3 py-1.5 short:px-2.5 short:py-1 rounded-xl text-sm short:text-xs whitespace-nowrap transition-colors capitalize",
-                  selectedCategory === cat.id ? "bg-primary text-off-white" : "bg-charcoal text-off-white/60 hover:text-off-white"
-                )}
-              >
-                {cat.name}
-              </button>
-            ))}
-          </div>
-
-          <div className="flex-1 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 tablet-land:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 square:grid-cols-3 short:grid-cols-3 gap-2 lg:gap-3 content-start">
-            {products.map((product) => (
-              <motion.button
-                key={product.id}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => addToCart(product)}
-                className="p-2.5 lg:p-4 short:p-2 rounded-xl lg:rounded-2xl bg-charcoal/80 border border-smoked-brown/30 hover:border-primary/50 hover:bg-charcoal transition-all text-left group min-h-[120px]"
-              >
-                <div className="aspect-square rounded-lg lg:rounded-xl bg-smoked-brown/20 mb-2 short:mb-1.5 flex items-center justify-center max-h-28 short:max-h-20 square:max-h-24 mx-auto w-full">
-                  {product.image ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={product.image} alt={product.name} className="w-full h-full object-cover rounded-lg lg:rounded-xl" />
-                  ) : (
-                    <ShoppingCart className="h-6 w-6 short:h-5 short:w-5 text-off-white/20 group-hover:text-primary/40 transition-colors" />
-                  )}
-                </div>
-                <p className="text-sm short:text-xs font-medium text-off-white truncate">{product.name}</p>
-                <p className="text-primary font-bold mt-0.5 text-sm short:text-xs">{formatCurrency(product.selling_price)}</p>
-                {product.stock <= product.minimum_stock && (
-                  <Badge variant="warning" className="mt-1 text-[10px]">Stock: {product.stock}</Badge>
-                )}
-              </motion.button>
-            ))}
-          </div>
+          <ProductMenuBrowser
+            products={products}
+            categories={categories}
+            onAdd={addToCart}
+            variant="pos"
+            showStock
+            isLoading={productsLoading}
+            searchInputRef={searchRef}
+            onSearchEnter={handleBarcodeScan}
+            searchPlaceholder="Rechercher ou scanner un code-barres…"
+            className="flex-1 min-h-0"
+          />
         </div>
 
         <div className="w-full border-t border-smoked-brown/30 bg-charcoal/30 flex flex-col min-h-0 max-h-[42dvh] short:max-h-[45dvh] tablet-land:max-h-none tablet-land:w-[340px] tablet-land:border-t-0 tablet-land:border-l [@media(min-width:1024px)_and_(min-aspect-ratio:5/4)]:max-h-none [@media(min-width:1024px)_and_(min-aspect-ratio:5/4)]:max-w-md [@media(min-width:1024px)_and_(min-aspect-ratio:5/4)]:border-t-0 [@media(min-width:1024px)_and_(min-aspect-ratio:5/4)]:border-l">
@@ -585,7 +542,7 @@ function POSPageInner() {
               <Badge variant="default">{cart.length} articles</Badge>
             </div>
             <div className="flex flex-wrap gap-1.5">
-              {tables.slice(0, 12).map((t) => (
+              {tables.map((t) => (
                 <button
                   key={t.id}
                   type="button"
@@ -612,6 +569,15 @@ function POSPageInner() {
               }}
               className="h-9 short:h-8"
             />
+            <div className="relative">
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-primary/70 pointer-events-none" />
+              <Input
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+                placeholder="Nom sur la facture (optionnel)"
+                className="h-10 pl-10 border-primary/20 bg-primary/5"
+              />
+            </div>
           </div>
 
           <div className="flex-1 overflow-y-auto p-3 lg:p-4 short:p-2 space-y-2 min-h-0">
@@ -766,6 +732,7 @@ function POSPageInner() {
                     <Button
                       onClick={() => {
                         setShowPending(false);
+                        setSettleCustomerName("");
                         setOrderToSettle(order);
                       }}
                     >
@@ -783,6 +750,7 @@ function POSPageInner() {
         order={orderToSettle}
         open={!!orderToSettle}
         onOpenChange={(open) => !open && setOrderToSettle(null)}
+        initialCustomerName={settleCustomerName}
         onPaid={(order, result, payments) =>
           handlePaidFromPos(order as PendingOrder, result, payments)
         }

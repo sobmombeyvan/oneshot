@@ -11,7 +11,7 @@ import {
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { BRAND, NAV_ITEMS } from "@/lib/constants";
+import { BRAND, NAV_SECTIONS } from "@/lib/constants";
 import { canAccessRoute } from "@/lib/permissions";
 import { createClient } from "@/lib/supabase/client";
 import { NotificationBell } from "@/components/layout/notification-bell";
@@ -51,7 +51,10 @@ export function Sidebar({ profile, notificationCount = 0 }: SidebarProps) {
     if (isSquare) setCollapsed(true);
   }, [isSquare]);
 
-  const navItems = NAV_ITEMS.filter((item) => canAccessRoute(profile.role, item.roles));
+  const navSections = NAV_SECTIONS.map((section) => ({
+    ...section,
+    items: section.items.filter((item) => canAccessRoute(profile.role, item.roles)),
+  })).filter((section) => section.items.length > 0);
 
   const handleLogout = async () => {
     const supabase = createClient();
@@ -76,28 +79,42 @@ export function Sidebar({ profile, notificationCount = 0 }: SidebarProps) {
         )}
       </div>
 
-      <nav className="flex-1 py-4 px-2 space-y-1 overflow-y-auto">
-        {navItems.map((item) => {
-          const Icon = ICON_MAP[item.icon];
-          const isActive = pathname.startsWith(item.href);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={() => setMobileOpen(false)}
-              className={cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-200",
-                isActive
-                  ? "bg-primary/15 text-primary border border-primary/30"
-                  : "text-off-white/60 hover:text-off-white hover:bg-charcoal/80",
-                collapsed && "justify-center px-2"
-              )}
-            >
-              {Icon && <Icon className="h-5 w-5 shrink-0" />}
-              {!collapsed && <span>{item.label}</span>}
-            </Link>
-          );
-        })}
+      <nav className="flex-1 py-3 px-2 overflow-y-auto">
+        {navSections.map((section, sectionIndex) => (
+          <div key={section.id} className={cn(sectionIndex > 0 && "mt-3")}>
+            {!collapsed && (
+              <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-off-white/30">
+                {section.label}
+              </p>
+            )}
+            {collapsed && sectionIndex > 0 && (
+              <div className="mx-2 mb-2 border-t border-smoked-brown/20" />
+            )}
+            <div className="space-y-1">
+              {section.items.map((item) => {
+                const Icon = ICON_MAP[item.icon];
+                const isActive = pathname.startsWith(item.href);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => setMobileOpen(false)}
+                    className={cn(
+                      "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-200",
+                      isActive
+                        ? "bg-primary/15 text-primary border border-primary/30"
+                        : "text-off-white/60 hover:text-off-white hover:bg-charcoal/80",
+                      collapsed && "justify-center px-2"
+                    )}
+                  >
+                    {Icon && <Icon className="h-5 w-5 shrink-0" />}
+                    {!collapsed && <span>{item.label}</span>}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </nav>
 
       <div className="p-4 border-t border-smoked-brown/30 space-y-2">

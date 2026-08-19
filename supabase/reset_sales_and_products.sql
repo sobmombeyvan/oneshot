@@ -1,6 +1,9 @@
 -- ONE SHOT — Reset sales + products (keep users, categories, tables)
 -- Paste this into: Supabase Dashboard > SQL Editor > New query > Run
 --
+-- To reset SALES and INVOICES only (keep products) and set 10 tables,
+-- use instead: reset_sales_and_invoices.sql
+--
 -- CLEARS:
 --   invoices, orders, order items
 --   purchases, purchase items

@@ -102,4 +102,8 @@ export const NAV_SECTIONS = [
   },
 ] as const;
 
-export const NAV_ITEMS = NAV_SECTIONS.flatMap((section) => section.items);
+export type NavItem = (typeof NAV_SECTIONS)[number]["items"][number];
+
+export const NAV_ITEMS: NavItem[] = NAV_SECTIONS.flatMap((section) => [
+  ...section.items,
+]);

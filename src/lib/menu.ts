@@ -230,3 +230,35 @@ export function filterProductsBySearch<
     return haystack.includes(q);
   });
 }
+
+/** Catégories ayant au moins un produit actif (les vides sont exclues). */
+export function getCategoriesWithProducts<
+  P extends { category_id: string | null },
+  C extends { id: string; name: string; type?: string },
+>(products: P[], categories: C[]): C[] {
+  const counts = new Map<string, number>();
+  for (const product of products) {
+    if (product.category_id) {
+      counts.set(product.category_id, (counts.get(product.category_id) ?? 0) + 1);
+    }
+  }
+  return sortCategories(categories.filter((c) => (counts.get(c.id) ?? 0) > 0));
+}
+
+/** Liste des 20 tables (complète avec placeholders si la BDD en a moins). */
+export function buildTableOptions<
+  T extends { id: string; number: number; status?: string; created_at?: string },
+>(tables: T[]): T[] {
+  const byNumber = new Map(tables.map((t) => [t.number, t]));
+  return Array.from({ length: TABLE_COUNT }, (_, i) => {
+    const number = i + 1;
+    const existing = byNumber.get(number);
+    if (existing) return existing;
+    return {
+      id: `table-${number}`,
+      number,
+      status: "available",
+      created_at: "",
+    } as T;
+  });
+}

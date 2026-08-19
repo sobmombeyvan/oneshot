@@ -10,15 +10,15 @@ import {
   ShoppingBag,
   Trash2,
   CheckCircle2,
-  UtensilsCrossed,
 } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { BRAND, VAT_RATE } from "@/lib/constants";
-import { TABLE_COUNT, sortCategories } from "@/lib/menu";
+import { TABLE_COUNT, getCategoriesWithProducts, sortCategories } from "@/lib/menu";
 import { calculateTotal, formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ProductMenuBrowser } from "@/components/menu/product-menu-browser";
+import { TablePicker } from "@/components/menu/table-picker";
 import type { CartItem, Category, Product, RestaurantTable } from "@/types/database";
 
 const TABLE_KEY = "oneshot_public_table";
@@ -34,24 +34,17 @@ export default function PublicOrderClient() {
 
   useEffect(() => {
     const fromQuery = Number(searchParams.get("table"));
-    let stored: number | null = null;
-    try {
-      const raw = localStorage.getItem(TABLE_KEY);
-      if (raw) stored = Number(raw);
-    } catch {
-      /* ignore */
+    if (Number.isFinite(fromQuery) && fromQuery >= 1 && fromQuery <= TABLE_COUNT) {
+      setTableNumber(fromQuery);
+    } else {
+      setTableNumber(null);
     }
-    const table =
-      Number.isFinite(fromQuery) && fromQuery > 0
-        ? fromQuery
-        : stored && stored > 0
-          ? stored
-          : null;
-    if (table) setTableNumber(table);
   }, [searchParams]);
 
   const pickTable = (n: number) => {
     setTableNumber(n);
+    setCart([]);
+    setOrderSent(false);
     try {
       localStorage.setItem(TABLE_KEY, String(n));
     } catch {
@@ -59,6 +52,20 @@ export default function PublicOrderClient() {
     }
     const url = new URL(window.location.href);
     url.searchParams.set("table", String(n));
+    window.history.replaceState({}, "", url.toString());
+  };
+
+  const changeTable = () => {
+    setTableNumber(null);
+    setCart([]);
+    setOrderSent(false);
+    try {
+      localStorage.removeItem(TABLE_KEY);
+    } catch {
+      /* ignore */
+    }
+    const url = new URL(window.location.href);
+    url.searchParams.delete("table");
     window.history.replaceState({}, "", url.toString());
   };
 
@@ -73,6 +80,7 @@ export default function PublicOrderClient() {
       if (error) throw error;
       return sortCategories((data ?? []) as Category[]);
     },
+    enabled: tableNumber != null,
   });
 
   const { data: products = [], isLoading } = useQuery({
@@ -86,6 +94,7 @@ export default function PublicOrderClient() {
       if (error) throw error;
       return (data ?? []) as Product[];
     },
+    enabled: tableNumber != null,
   });
 
   const { data: tables = [] } = useQuery({
@@ -99,6 +108,11 @@ export default function PublicOrderClient() {
       return (data ?? []) as RestaurantTable[];
     },
   });
+
+  const menuCategories = useMemo(
+    () => getCategoriesWithProducts(products, categories),
+    [products, categories]
+  );
 
   const subtotal = useMemo(
     () => cart.reduce((sum, item) => sum + item.product.selling_price * item.quantity, 0),
@@ -169,38 +183,11 @@ export default function PublicOrderClient() {
 
   if (!tableNumber) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-6 gap-6 bg-black text-off-white">
-        <UtensilsCrossed className="h-12 w-12 text-primary" />
-        <div className="text-center space-y-2">
-          <h1 className="font-[family-name:var(--font-cinzel)] text-3xl sm:text-4xl text-primary tracking-wide">
-            {BRAND.name}
-          </h1>
-          <p className="text-off-white/60">{BRAND.subtitle}</p>
-          <p className="text-sm text-off-white/50 pt-2">
-            Choisissez votre table pour commander
-          </p>
-        </div>
-        <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 w-full max-w-lg">
-          {(tables.length > 0
-            ? tables
-            : Array.from({ length: TABLE_COUNT }, (_, i) => ({
-                id: String(i + 1),
-                number: i + 1,
-                status: "available" as const,
-                created_at: "",
-              }))
-          ).map((table) => (
-            <button
-              key={table.id}
-              type="button"
-              onClick={() => pickTable(table.number)}
-              className="h-16 rounded-2xl border border-smoked-brown/40 bg-charcoal/60 text-lg font-semibold hover:border-primary hover:bg-primary/10 active:scale-[0.98]"
-            >
-              {table.number}
-            </button>
-          ))}
-        </div>
-      </div>
+      <TablePicker
+        tables={tables}
+        onSelect={pickTable}
+        subtitle={BRAND.subtitle}
+      />
     );
   }
 
@@ -232,17 +219,10 @@ export default function PublicOrderClient() {
             </button>
             <button
               type="button"
-              onClick={() => {
-                setTableNumber(null);
-                try {
-                  localStorage.removeItem(TABLE_KEY);
-                } catch {
-                  /* ignore */
-                }
-              }}
+              onClick={changeTable}
               className="h-12 px-3 rounded-xl border border-smoked-brown/40 text-sm text-off-white/60"
             >
-              Table
+              Changer table
             </button>
           </div>
         </div>
@@ -260,7 +240,7 @@ export default function PublicOrderClient() {
 
         <ProductMenuBrowser
           products={products}
-          categories={categories}
+          categories={menuCategories}
           onAdd={addToCart}
           variant="catalog"
           isLoading={isLoading}

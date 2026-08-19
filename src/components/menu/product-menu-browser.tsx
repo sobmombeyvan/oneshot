@@ -7,8 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { cn, formatCurrency } from "@/lib/utils";
 import {
   filterProductsBySearch,
+  getCategoriesWithProducts,
   groupProductsByCategory,
-  sortCategories,
 } from "@/lib/menu";
 import type { Category, Product } from "@/types/database";
 
@@ -141,23 +141,26 @@ export function ProductMenuBrowser<P extends MenuBrowseProduct = MenuBrowseProdu
   const [search, setSearch] = useState("");
   const [categoryId, setCategoryId] = useState<string | null>(null);
 
-  const sortedCategories = useMemo(() => sortCategories(categories), [categories]);
+  const visibleCategories = useMemo(
+    () => getCategoriesWithProducts(products, categories),
+    [products, categories]
+  );
 
-  const visibleCategories = useMemo(() => {
-    const used = new Set(products.map((p) => p.category_id).filter(Boolean));
-    return sortedCategories.filter((c) => used.has(c.id));
-  }, [products, sortedCategories]);
+  const activeCategoryId =
+    categoryId && visibleCategories.some((c) => c.id === categoryId)
+      ? categoryId
+      : null;
 
   const filteredProducts = useMemo(() => {
     let list = products;
-    if (categoryId) list = list.filter((p) => p.category_id === categoryId);
+    if (activeCategoryId) list = list.filter((p) => p.category_id === activeCategoryId);
     return filterProductsBySearch(list, search);
-  }, [products, categoryId, search]);
+  }, [products, activeCategoryId, search]);
 
   const productGroups = useMemo(() => {
-    if (categoryId || search.trim()) return null;
+    if (activeCategoryId || search.trim()) return null;
     return groupProductsByCategory(filteredProducts, visibleCategories);
-  }, [filteredProducts, visibleCategories, categoryId, search]);
+  }, [filteredProducts, visibleCategories, activeCategoryId, search]);
 
   const resultCount = filteredProducts.length;
 
@@ -196,7 +199,7 @@ export function ProductMenuBrowser<P extends MenuBrowseProduct = MenuBrowseProdu
             onClick={() => setCategoryId(null)}
             className={cn(
               "shrink-0 h-10 px-4 rounded-full text-sm font-medium border transition-colors",
-              categoryId === null
+              activeCategoryId === null
                 ? "bg-primary text-black border-primary"
                 : "border-smoked-brown/40 text-off-white/70 hover:border-primary/40"
             )}
@@ -210,7 +213,7 @@ export function ProductMenuBrowser<P extends MenuBrowseProduct = MenuBrowseProdu
               onClick={() => setCategoryId(cat.id)}
               className={cn(
                 "shrink-0 h-10 px-4 rounded-full text-sm font-medium border transition-colors whitespace-nowrap",
-                categoryId === cat.id
+                activeCategoryId === cat.id
                   ? "bg-primary text-black border-primary"
                   : "border-smoked-brown/40 text-off-white/70 hover:border-primary/40"
               )}
@@ -220,7 +223,7 @@ export function ProductMenuBrowser<P extends MenuBrowseProduct = MenuBrowseProdu
           ))}
         </div>
 
-        {(search || categoryId) && (
+        {(search || activeCategoryId) && (
           <p className="text-xs text-off-white/45 px-1">
             {resultCount} résultat{resultCount !== 1 ? "s" : ""}
             {search ? ` pour « ${search} »` : ""}
@@ -240,7 +243,7 @@ export function ProductMenuBrowser<P extends MenuBrowseProduct = MenuBrowseProdu
             <p className="text-sm text-off-white/30 mt-1">
               Essayez un autre mot ou effacez les filtres
             </p>
-            {(search || categoryId) && (
+            {(search || activeCategoryId) && (
               <button
                 type="button"
                 onClick={() => {

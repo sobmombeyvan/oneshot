@@ -11,16 +11,16 @@ import {
   ShoppingBag,
   Trash2,
   CheckCircle2,
-  UtensilsCrossed,
 } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
-import { clearTabletSession, getTabletSession, setTabletSession } from "@/lib/tablet";
+import { clearTabletSession, setTabletSession } from "@/lib/tablet";
 import { BRAND, VAT_RATE } from "@/lib/constants";
-import { TABLE_COUNT, sortCategories } from "@/lib/menu";
+import { TABLE_COUNT, getCategoriesWithProducts, sortCategories } from "@/lib/menu";
 import { calculateTotal, formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ProductMenuBrowser } from "@/components/menu/product-menu-browser";
+import { TablePicker } from "@/components/menu/table-picker";
 import type { CartItem, Category, Product, RestaurantTable } from "@/types/database";
 
 export default function ClientMenuPage() {
@@ -36,16 +36,28 @@ export default function ClientMenuPage() {
 
   useEffect(() => {
     const fromQuery = Number(searchParams.get("table"));
-    const session = getTabletSession();
-    const table =
-      Number.isFinite(fromQuery) && fromQuery > 0
-        ? fromQuery
-        : (session?.tableNumber ?? null);
-    if (table) {
-      setTableNumber(table);
-      setTabletSession(table);
+    if (Number.isFinite(fromQuery) && fromQuery >= 1 && fromQuery <= TABLE_COUNT) {
+      setTableNumber(fromQuery);
+      setTabletSession(fromQuery);
+    } else {
+      setTableNumber(null);
     }
   }, [searchParams]);
+
+  const pickTable = (n: number) => {
+    setTabletSession(n);
+    setTableNumber(n);
+    setCart([]);
+    setOrderSent(false);
+    router.replace(`/menu?table=${n}`);
+  };
+
+  const changeTable = () => {
+    setTableNumber(null);
+    setCart([]);
+    setOrderSent(false);
+    router.replace("/menu");
+  };
 
   const { data: categories = [] } = useQuery({
     queryKey: ["client-categories"],
@@ -58,6 +70,7 @@ export default function ClientMenuPage() {
       if (error) throw error;
       return sortCategories((data ?? []) as Category[]);
     },
+    enabled: tableNumber != null,
   });
 
   const { data: products = [], isLoading } = useQuery({
@@ -71,6 +84,7 @@ export default function ClientMenuPage() {
       if (error) throw error;
       return (data ?? []) as Product[];
     },
+    enabled: tableNumber != null,
   });
 
   const { data: tables = [] } = useQuery({
@@ -84,6 +98,11 @@ export default function ClientMenuPage() {
       return (data ?? []) as RestaurantTable[];
     },
   });
+
+  const menuCategories = useMemo(
+    () => getCategoriesWithProducts(products, categories),
+    [products, categories]
+  );
 
   const subtotal = useMemo(
     () => cart.reduce((sum, item) => sum + item.product.selling_price * item.quantity, 0),
@@ -197,42 +216,16 @@ export default function ClientMenuPage() {
 
   if (!tableNumber) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-6 gap-6">
-        <UtensilsCrossed className="h-12 w-12 text-primary" />
-        <div className="text-center space-y-2">
-          <h1 className="font-[family-name:var(--font-cinzel)] text-3xl text-primary">
-            {BRAND.name}
-          </h1>
-          <p className="text-off-white/60">Choisissez votre table pour commencer</p>
-        </div>
-        <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 w-full max-w-lg">
-          {(tables.length > 0
-            ? tables
-            : Array.from({ length: TABLE_COUNT }, (_, i) => ({
-                id: String(i + 1),
-                number: i + 1,
-                status: "available" as const,
-                created_at: "",
-              }))
-          ).map((table) => (
-            <button
-              key={table.id}
-              type="button"
-              onClick={() => {
-                setTabletSession(table.number);
-                setTableNumber(table.number);
-                router.replace(`/menu?table=${table.number}`);
-              }}
-              className="h-16 rounded-2xl border border-smoked-brown/40 bg-charcoal/60 text-lg font-semibold hover:border-primary hover:bg-primary/10"
-            >
-              {table.number}
-            </button>
-          ))}
-        </div>
-        <Button variant="ghost" onClick={handleLogout} className="text-off-white/50">
-          <LogOut className="h-4 w-4" /> Quitter
-        </Button>
-      </div>
+      <TablePicker
+        tables={tables}
+        onSelect={pickTable}
+        subtitle="Choisissez votre table pour commencer"
+        footer={
+          <Button variant="ghost" onClick={handleLogout} className="text-off-white/50">
+            <LogOut className="h-4 w-4" /> Quitter
+          </Button>
+        }
+      />
     );
   }
 
@@ -264,6 +257,13 @@ export default function ClientMenuPage() {
             </button>
             <button
               type="button"
+              onClick={changeTable}
+              className="h-12 px-3 rounded-xl border border-smoked-brown/40 text-sm text-off-white/60"
+            >
+              Table
+            </button>
+            <button
+              type="button"
               onClick={handleLogout}
               className="h-12 w-12 rounded-xl border border-smoked-brown/40 flex items-center justify-center text-off-white/60"
               aria-label="Déconnexion"
@@ -286,7 +286,7 @@ export default function ClientMenuPage() {
 
         <ProductMenuBrowser
           products={products}
-          categories={categories}
+          categories={menuCategories}
           onAdd={addToCart}
           variant="catalog"
           isLoading={isLoading}
